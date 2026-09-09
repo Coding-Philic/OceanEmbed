@@ -1,0 +1,85 @@
+# === OceanEmbed PoC Configuration ===
+# Bay of Bengal (80°E–95°E, 8°N–22°N)
+# 6 depth levels, 2017–2023
+
+# ─── Data ───────────────────────────────────────
+data:
+  aligned_dir: "data/aligned"
+  stats_file: "data/processed/normalization_stats.json"
+  mask_file: "data/processed/ocean_mask.nc"
+  
+  # Spatial domain
+  lon_range: [80.0, 95.0]
+  lat_range: [8.0, 22.0]
+  
+  # Depth levels (meters)
+  depth_levels: [0, 50, 100, 150, 200, 500]
+  
+  # Temporal splits (strict temporal holdout)
+  train_years: [2017, 2018, 2019, 2020, 2021]
+  val_years: [2022]
+  test_years: [2023]
+  
+  # Input channels (4 satellite + 4 coordinate = 8 total)
+  input_channels:
+    - sst          # Sea Surface Temperature (°C)
+    - sla          # Sea Level Anomaly (m)
+    - wind_u       # 10m Eastward Wind (m/s)
+    - wind_v       # 10m Northward Wind (m/s)
+  num_input_channels: 8
+
+# ─── Model ──────────────────────────────────────
+model:
+  in_channels: 8
+  num_depths: 6
+  embed_dim: 256
+  num_heads: 8
+  num_decoder_layers: 4
+  dropout: 0.1
+  # stage_channels: [64, 128, 256]   # (Optional) Override encoder stage widths
+  # head_channels: [128, 64]          # (Optional) Override reconstruction head widths
+
+# ─── Loss ───────────────────────────────────────
+loss:
+  lambda_grad: 0.1
+  lambda_steric: 0.05
+  lambda_corr: 0.1
+  thermocline_center: 150.0   # meters (peak weight depth)
+  thermocline_sigma: 75.0     # meters (Gaussian width)
+  depth_weight_base: 1.0      # base weight for all depths
+  depth_weight_peak: 4.0      # additional peak weight at thermocline center
+  alpha_thermal: 2.1e-4       # thermal expansion coeff (/°C)
+
+# ─── Training ──────────────────────────────────
+training:
+  batch_size: 4           # M1 Air 8GB: keep small
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  max_epochs: 100
+  warmup_epochs: 5
+  min_lr: 1.0e-6
+  gradient_clip_val: 1.0
+  channel_dropout_p: 0.15
+  precision: "32"         # MPS does not support bf16
+  
+  # LR Scheduler (CosineAnnealingWarmRestarts)
+  scheduler_t0: 20
+  scheduler_t_mult: 2
+  
+  # Checkpointing
+  save_top_k: 3
+  monitor: "val/total"
+  mode: "min"
+
+# ─── Hardware ──────────────────────────────────
+hardware:
+  gpus: 1
+  num_workers: 2          # M1: keep low, unified memory
+  accelerator: "mps"      # Apple Silicon Metal GPU
+  strategy: "auto"
+
+# ─── Logging ───────────────────────────────────
+logging:
+  project: "oceanembed"
+  name: "poc-bob-v1"
+  log_every_n_steps: 50

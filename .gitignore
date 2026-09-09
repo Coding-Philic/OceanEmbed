@@ -1,0 +1,86 @@
+# ─── Data ───────────────────────────────────────────────────────────────────
+data/
+*.nc
+*.zarr/
+*.zarr
+*.h5
+*.hdf5
+*.csv
+*.parquet
+*.feather
+*.pkl
+*.pickle
+
+# ─── Docs ───────────────────────────────────────────────────────────────────
+docs/
+docs.zip
+*.pdf
+*.docx
+*.pptx
+
+# ─── Archives / Large binaries ───────────────────────────────────────────────
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.7z
+*.rar
+*.gz
+
+# ─── ML Artifacts ────────────────────────────────────────────────────────────
+outputs/
+wandb/
+lightning_logs/
+mlruns/
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.bin
+
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.so
+site-packages/
+
+# ─── Virtual environments ─────────────────────────────────────────────────────
+.env
+.env.*
+.venv/
+env/
+venv/
+ENV/
+
+# ─── Jupyter ─────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ─── Test / coverage ─────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.log
+
+# ─── macOS ───────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# ─── IDE ─────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

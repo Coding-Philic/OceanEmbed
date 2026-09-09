@@ -1,0 +1,87 @@
+# === OceanEmbed Full NIO Configuration ===
+# North Indian Ocean (45°E–105°E, 5°N–30°N)
+# 15 depth levels, 2005–2024
+
+# ─── Data ───────────────────────────────────────
+data:
+  aligned_dir: "data/aligned"
+  stats_file: "data/processed/normalization_stats.json"
+  mask_file: "data/processed/ocean_mask.nc"
+  
+  # Spatial domain (Full North Indian Ocean)
+  lon_range: [45.0, 105.0]
+  lat_range: [5.0, 30.0]
+  
+  # Full 15 standard depth levels (meters)
+  depth_levels: [0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000]
+  
+  # Temporal splits
+  train_years: [2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020]
+  val_years: [2021, 2022]
+  test_years: [2023, 2024]
+  
+  # Input channels
+  input_channels:
+    - sst
+    - sss
+    - sla
+    - wind_u
+    - wind_v
+    - cur_u
+    - cur_v
+  num_input_channels: 11
+
+# ─── Model ──────────────────────────────────────
+model:
+  in_channels: 11
+  num_depths: 15
+  embed_dim: 256
+  num_heads: 8
+  num_decoder_layers: 4
+  dropout: 0.1
+  # stage_channels: [64, 128, 256]   # (Optional) Override encoder stage widths
+  # head_channels: [128, 64]          # (Optional) Override reconstruction head widths
+
+# ─── Loss ───────────────────────────────────────
+loss:
+  lambda_grad: 0.1
+  lambda_steric: 0.05
+  lambda_corr: 0.1
+  thermocline_center: 150.0
+  thermocline_sigma: 75.0
+  depth_weight_base: 1.0
+  depth_weight_peak: 4.0
+  alpha_thermal: 2.1e-4
+
+# ─── Training ──────────────────────────────────
+training:
+  batch_size: 32          # Total across all GPUs
+  lr: 5.0e-5              # Lower LR for larger dataset
+  weight_decay: 1.0e-4
+  max_epochs: 200
+  warmup_epochs: 10
+  min_lr: 1.0e-6
+  gradient_clip_val: 1.0
+  channel_dropout_p: 0.15
+  precision: "bf16-mixed"
+  
+  # LR Scheduler
+  scheduler_t0: 20
+  scheduler_t_mult: 2
+  
+  save_top_k: 3
+  monitor: "val/loss"
+  mode: "min"
+
+# ─── Hardware ──────────────────────────────────
+hardware:
+  gpus: 4
+  num_workers: 8
+  accelerator: "gpu"
+  strategy: "ddp"
+
+# ─── Logging ───────────────────────────────────
+logging:
+  project: "oceanembed"
+  name: "full-nio-v1"
+  log_every_n_steps: 50

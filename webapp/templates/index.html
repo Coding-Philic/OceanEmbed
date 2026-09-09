@@ -1,0 +1,2249 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>OceanEmbed — 3D Subsurface Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <!-- Globe.gl -->
+  <script src="//unpkg.com/globe.gl"></script>
+  <!-- Plotly -->
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #000000;
+      --panel: #111111;
+      --border: #333333;
+      --teal: #F7931E;
+      --teal-dim: rgba(247, 147, 30, 0.1);
+      --blue: #E6E6E6;
+      --text: #E6E6E6;
+      --muted: #888888;
+      --danger: #ff4466;
+    }
+
+    html,
+    body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      background: var(--bg);
+      font-family: 'Inter', sans-serif;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background: none;
+    }
+
+    /* ── HEADER ─────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      z-index: 200;
+      flex-shrink: 0;
+      background: rgba(7, 12, 24, 0.95);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: -.5px;
+    }
+
+    .logo span {
+      color: var(--teal);
+    }
+
+    nav {
+      display: flex;
+      gap: 2px;
+    }
+
+    .nav-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font: 600 13px 'Inter', sans-serif;
+      color: var(--muted);
+      transition: .2s;
+      position: relative;
+    }
+
+    .nav-btn:hover {
+      color: var(--teal);
+      background: transparent;
+      opacity: 1 !important;
+    }
+
+    .nav-btn.active {
+      color: var(--teal);
+      background: var(--teal-dim);
+      opacity: 1 !important;
+    }
+
+    .nav-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 20%;
+      right: 20%;
+      height: 2px;
+      background: var(--teal);
+      border-radius: 2px;
+    }
+
+    .dropdown {
+      position: relative;
+      display: inline-block;
+    }
+
+    .dropdown-content {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: 100%;
+      background-color: var(--panel);
+      min-width: 160px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .dropdown-content button {
+      color: white;
+      padding: 12px 16px;
+      text-decoration: none;
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      font: 400 12px 'Inter', sans-serif;
+      cursor: pointer;
+      transition: .2s;
+    }
+
+    .dropdown-content button:hover {
+      background-color: var(--teal-dim);
+      color: var(--teal);
+    }
+
+    .dropdown:hover .dropdown-content {
+      display: block;
+    }
+
+    .dropdown:hover .dropdown-btn {
+      color: var(--teal);
+    }
+
+    .hdr-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge {
+      background: var(--teal-dim);
+      border: 1px solid rgba(247, 147, 30, .4);
+      color: var(--teal);
+      padding: 5px 12px;
+      border-radius: 20px;
+      font: 600 11px 'Inter', sans-serif;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--teal);
+      border-radius: 50%;
+      animation: blink 2s infinite;
+    }
+
+    @keyframes blink {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .2
+      }
+    }
+
+    .run-btn {
+      background: var(--teal);
+      border: none;
+      cursor: pointer;
+      padding: 9px 18px;
+      border-radius: 10px;
+      font: 700 13px 'Inter', sans-serif;
+      color: #000;
+      transition: .2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      opacity: 1 !important;
+    }
+
+    .run-btn:hover {
+      transform: translateY(-1px);
+      background: var(--teal);
+      color: #ffffff;
+      opacity: 1 !important;
+    }
+
+    .run-btn:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* ── TABS ────────────────────────────────────────────────────── */
+    .tab-content {
+      display: none;
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      z-index: 1;
+    }
+
+    .tab-content.active {
+      display: flex;
+    }
+
+    /* ── PANEL ───────────────────────────────────────────────────── */
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      backdrop-filter: blur(10px);
+    }
+
+    .panel-hdr {
+      padding: 11px 16px;
+      font: 700 10px 'Inter', sans-serif;
+      color: var(--blue);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ══════════════════════════════════════════════
+       TAB 1 — DASHBOARD
+    ══════════════════════════════════════════════ */
+    #tab-dashboard {
+      display: none;
+      gap: 12px;
+      padding: 14px 16px;
+      grid-template-columns: 280px 1fr 300px;
+      grid-template-rows: 1fr auto;
+      height: calc(100vh - 57px);
+    }
+
+    #tab-dashboard.active {
+      display: grid;
+    }
+
+    /* Left sidebar */
+    .left-col {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+    }
+
+    /* Leaflet map */
+    #bobMap {
+      height: 240px;
+      width: 100%;
+    }
+
+    .map-maximized {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: 9999 !important;
+      background: var(--bg) !important;
+      display: flex !important;
+      flex-direction: column !important;
+      border-radius: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+    }
+
+    .map-maximized #bobMap {
+      flex: 1;
+      height: auto !important;
+    }
+
+    .leaflet-container {
+      background: #06101e !important;
+    }
+
+    .map-controls {
+      display: flex;
+      gap: 8px;
+      padding: 10px 14px;
+      flex-wrap: wrap;
+      border-top: 1px solid var(--border);
+    }
+
+    .map-info {
+      padding: 8px 14px;
+      font-size: 11px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+
+    .map-info span {
+      color: var(--teal);
+      font-weight: 600;
+    }
+
+    .gen-btn {
+      width: 100%;
+      padding: 11px;
+      border: none;
+      cursor: pointer;
+      background: var(--teal);
+      color: #000;
+      font: 700 13px 'Inter', sans-serif;
+      border-radius: 10px;
+      opacity: 1 !important;
+      transition: .2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .gen-btn:hover {
+      background: var(--teal);
+      color: #ffffff;
+      opacity: 1 !important;
+    }
+
+    .gen-btn:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+
+    /* Slider */
+    .slider-wrap {
+      padding: 10px 14px;
+    }
+
+    .slider-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      margin-bottom: 7px;
+    }
+
+    .slider-row strong {
+      color: var(--teal);
+    }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, .1);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 15px;
+      height: 15px;
+      background: var(--teal);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    /* Feed toggles */
+    .feed-list {
+      padding: 8px 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .feed-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .feed-text .name {
+      font-size: 12px;
+    }
+
+    .feed-text .sub {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .toggle {
+      position: relative;
+      width: 34px;
+      height: 19px;
+      flex-shrink: 0;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .tslider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: rgba(255, 255, 255, .1);
+      border-radius: 19px;
+      transition: .3s;
+    }
+
+    .tslider::before {
+      content: '';
+      position: absolute;
+      width: 13px;
+      height: 13px;
+      left: 3px;
+      bottom: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: .3s;
+    }
+
+    .toggle input:checked+.tslider {
+      background: var(--teal);
+    }
+
+    .toggle input:checked+.tslider::before {
+      transform: translateX(15px);
+    }
+
+    /* API section */
+    .api-wrap {
+      padding: 10px 14px 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .api-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .api-input {
+      flex: 1;
+      background: rgba(0, 0, 0, .3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 10px;
+      border-radius: 8px;
+      font: 500 11px 'Inter', sans-serif;
+    }
+
+    .api-input:focus {
+      outline: none;
+      border-color: var(--teal);
+    }
+
+    .verify-btn {
+      background: var(--teal);
+      color: #000;
+      border: none;
+      cursor: pointer;
+      padding: 7px 12px;
+      border-radius: 8px;
+      font: 700 11px 'Inter', sans-serif;
+    }
+
+    /* Center panel */
+    .center-col {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    #plot3d {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .plot-footer {
+      padding: 9px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .plot-footer strong {
+      color: var(--teal);
+    }
+
+    /* Right col */
+    .right-col {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px;
+    }
+
+    .mcard {
+      background: var(--teal-dim);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 13px;
+      transition: .2s;
+    }
+
+    .mcard:hover {
+      border-color: var(--teal);
+    }
+
+    .mlabel {
+      font: 700 9px 'Inter', sans-serif;
+      color: var(--blue);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .mvalue {
+      font: 800 22px 'Inter', sans-serif;
+      color: var(--teal);
+      margin: 3px 0 1px;
+    }
+
+    .msub {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    #depthChart {
+      min-height: 180px;
+    }
+
+    .export-wrap {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .exp-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 0, 0, .25);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 9px 13px;
+      border-radius: 10px;
+      font: 500 12px 'Inter', sans-serif;
+      cursor: pointer;
+      transition: .2s;
+    }
+
+    .exp-btn:hover {
+      border-color: var(--teal);
+      color: #ffffff;
+      background: var(--teal);
+      opacity: 1 !important;
+    }
+
+    .exp-btn.primary {
+      background: var(--teal);
+      color: #000;
+      font-weight: 700;
+      border-color: var(--teal);
+    }
+
+    /* Bottom row */
+    .bottom-row {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .bot-label {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.6;
+      min-width: 120px;
+    }
+
+    .bot-label strong {
+      display: block;
+      font: 700 9px 'Inter', sans-serif;
+      color: var(--blue);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 3px;
+    }
+
+    .preview-box {
+      flex: 1;
+      min-width: 0;
+      height: 68px;
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+      border: 1px solid var(--border);
+    }
+
+    .preview-box canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .preview-lbl {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(0, 0, 0, .65);
+      padding: 3px 8px;
+      font-size: 10px;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      color: white;
+    }
+
+    /* ══════════════════════════════════════════════
+       TAB 2 — ANALYTICS
+    ══════════════════════════════════════════════ */
+    #tab-analytics {
+      display: none;
+      flex-direction: column;
+      height: calc(100vh - 57px);
+      padding: 14px 16px;
+      gap: 12px;
+    }
+
+    #tab-analytics.active {
+      display: flex;
+    }
+
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 12px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .analytics-grid .panel {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chart-inner {
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ══════════════════════════════════════════════
+       TAB 3 — DATA EXPLORER
+    ══════════════════════════════════════════════ */
+    #tab-explorer {
+      display: none;
+      gap: 12px;
+      padding: 14px 16px;
+      grid-template-columns: 260px 1fr;
+      height: calc(100vh - 57px);
+    }
+
+    #tab-explorer.active {
+      display: grid;
+    }
+
+    .explorer-left {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+    }
+
+    .explorer-right {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+    }
+
+    .form-row {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .form-label {
+      font: 700 10px 'Inter', sans-serif;
+      color: var(--blue);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 2px;
+    }
+
+    .form-input {
+      background: rgba(0, 0, 0, .35);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font: 500 12px 'Inter', sans-serif;
+      width: 100%;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--teal);
+    }
+
+    .fetch-btn {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      cursor: pointer;
+      background: var(--teal);
+      color: #000;
+      font: 700 13px 'Inter', sans-serif;
+      border-radius: 10px;
+      margin-top: 4px;
+      transition: opacity .2s;
+    }
+
+    .fetch-btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    @keyframes pulseBadge {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: .4;
+      }
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .data-table th {
+      background: var(--teal-dim);
+      color: var(--blue);
+      font: 700 10px 'Inter', sans-serif;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .data-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, .04);
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .data-table tr:hover td {
+      background: rgba(247, 147, 30, .04);
+    }
+
+    .tval {
+      color: var(--teal);
+      font-weight: 700;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: 300px;
+    }
+
+    /* ══════════════════════════════════════════════
+       TAB 4 — MODEL SETTINGS
+    ══════════════════════════════════════════════ */
+    #tab-settings {
+      display: none;
+      gap: 12px;
+      padding: 14px 16px;
+      grid-template-columns: 1fr 1fr 1fr;
+      height: calc(100vh - 57px);
+      align-content: start;
+    }
+
+    #tab-settings.active {
+      display: grid;
+    }
+
+    .settings-card {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .setting-label {
+      font-size: 13px;
+    }
+
+    .setting-sub {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .setting-val {
+      background: rgba(0, 0, 0, .35);
+      border: 1px solid var(--border);
+      color: var(--teal);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font: 700 13px 'Inter', sans-serif;
+      width: 100px;
+      text-align: center;
+    }
+
+    .setting-val:focus {
+      outline: none;
+      border-color: var(--teal);
+    }
+
+    .arch-block {
+      background: rgba(0, 0, 0, .3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .arch-block strong {
+      color: var(--teal);
+    }
+
+    .stat-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .stat-table th {
+      color: var(--blue);
+      font: 700 9px 'Inter', sans-serif;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+
+    .stat-table td {
+      padding: 7px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, .04);
+    }
+
+    .stat-table .hi {
+      color: var(--teal);
+      font-weight: 700;
+    }
+
+    /* ── LOADER ───────────────────────────────────── */
+    #loader {
+      position: fixed;
+      inset: 0;
+      background: rgba(7, 12, 24, .9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity .4s;
+    }
+
+    #loader.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .spin {
+      width: 48px;
+      height: 48px;
+      border: 3px solid rgba(247, 147, 30, .15);
+      border-top-color: var(--teal);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loader-text {
+      margin-top: 14px;
+      color: var(--teal);
+      font: 600 14px 'Inter', sans-serif;
+    }
+
+    .loader-sub {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    /* ── SELECTION INFO BAR ───────────────────────── */
+    #selectionBar {
+      display: none;
+      background: var(--teal-dim);
+      border: 1px solid rgba(247, 147, 30, .3);
+      border-radius: 10px;
+      padding: 10px 16px;
+      margin-bottom: 2px;
+      font-size: 12px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    #selectionBar.visible {
+      display: flex;
+    }
+
+    #selectionBar .sel-coords {
+      color: var(--teal);
+      font-weight: 700;
+    }
+
+    .clear-sel {
+      background: rgba(255, 70, 100, .15);
+      border: 1px solid rgba(255, 70, 100, .3);
+      color: #ff7799;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font: 600 11px 'Inter', sans-serif;
+      white-space: nowrap;
+    }
+
+    .globe-bg {
+      background-image: url("/static/images/globe_bg.jpg");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+
+    /* ══════════════════════════════════════════════
+       RESPONSIVENESS (Media Queries)
+    ══════════════════════════════════════════════ */
+    @media (max-width: 1200px) {
+
+      /* Tablet view: 2 columns, Right column wraps below */
+      #tab-dashboard {
+        grid-template-columns: 280px 1fr;
+        grid-template-rows: auto auto auto;
+        height: auto;
+        min-height: calc(100vh - 57px);
+        overflow-y: auto;
+      }
+
+      .right-col {
+        grid-column: 1 / -1;
+        flex-direction: row;
+        flex-wrap: wrap;
+        overflow: visible;
+      }
+
+      .right-col>* {
+        flex: 1;
+        min-width: 300px;
+      }
+
+      .bottom-row {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 768px) {
+
+      /* Mobile view: 1 column stacked */
+      body {
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+
+      #tab-dashboard {
+        grid-template-columns: 1fr;
+        display: flex;
+        flex-direction: column;
+        height: auto;
+      }
+
+      .left-col {
+        overflow: visible;
+      }
+
+      .right-col {
+        flex-direction: column;
+      }
+
+      .right-col>* {
+        min-width: 100%;
+      }
+
+      #bobMap {
+        height: 300px;
+      }
+
+      .analytics-grid {
+        display: flex;
+        flex-direction: column;
+      }
+
+      #tab-analytics {
+        height: auto;
+        overflow-y: auto;
+      }
+
+      .bot-label {
+        width: 100%;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Loader -->
+  <div id="loader">
+    <div class="spin"></div>
+    <div class="loader-text">Loading OceanEmbed...</div>
+    <div class="loader-sub">Reading 365 days of AI predictions</div>
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="logo" style="display:flex; align-items:center; gap:12px;">
+      <img src="/static/images/logo.png" alt="OceanEmbed Logo"
+        style="height:36px; width:36px; border-radius:50%; object-fit:cover; border:2px solid var(--teal);"
+        onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\\'http://www.w3.org/2000/svg\\\' width=\\\'36\\\' height=\\\'36\\\'><circle cx=\\\'18\\\' cy=\\\'18\\\' r=\\\'18\\\' fill=\\\'#F7931E\\\'/></svg>'" />
+      <div>Ocean<span>Embed</span></div>
+    </div>
+    <nav>
+      <button class="nav-btn active" onclick="switchTab('dashboard')">Dashboard</button>
+      <button class="nav-btn" onclick="switchTab('inputs')">Live Inputs</button>
+      <button class="nav-btn" onclick="switchTab('analytics')">Analytics</button>
+      <button class="nav-btn" onclick="switchTab('explorer')">Data Explorer</button>
+      <button class="nav-btn" onclick="switchTab('settings')">Model Settings</button>
+    </nav>
+    <div class="hdr-right">
+      <div class="dropdown">
+        <button class="nav-btn dropdown-btn">Export ▼</button>
+        <div class="dropdown-content">
+          <button id="btn-export-netcdf">Download 3D NetCDF</button>
+          <button id="btn-export-csv">Export as CSV</button>
+          <button id="btn-export-screenshot">Save Screenshot</button>
+        </div>
+      </div>
+      <div class="badge">AI Model Active</div>
+      <button class="run-btn" id="runBtn" onclick="generatePrediction()">▶ Run Prediction</button>
+    </div>
+  </header>
+
+  <!-- ══════════ TAB 1: DASHBOARD ══════════ -->
+  <div class="tab-content active" id="tab-dashboard">
+
+    <!-- LEFT -->
+    <div class="left-col">
+
+      <!-- Map panel -->
+      <div class="panel" id="mapPanel">
+        <div class="panel-hdr" style="justify-content: space-between;">
+          <span>Bay of Bengal — Select Region</span>
+          <button id="btn-maximize-map"
+            style="background:none;border:none;color:var(--text);cursor:pointer;font-size:14px;"
+            onclick="toggleMapMaximize()" title="Maximize Map">⛶</button>
+        </div>
+        <div id="bobMap"></div>
+        <div id="selectionBar">
+          <span>📦 Selected: <span class="sel-coords" id="selCoords">–</span></span>
+          <button class="clear-sel" onclick="clearSelection()">✕ Clear</button>
+        </div>
+        <div class="map-controls">
+          <button class="gen-btn" id="genBtn" onclick="generatePrediction()">
+            Generate 3D Model
+          </button>
+        </div>
+        <div class="map-info" id="mapInfo">
+          Draw a rectangle on the map to select a region, then click Generate.
+        </div>
+      </div>
+
+
+      <!-- Live Feed -->
+      <div class="panel">
+        <div class="panel-hdr">Live Data Feed</div>
+        <div class="feed-list">
+          <div class="feed-item">
+            <div class="feed-text">
+              <div class="name">SST</div>
+              <div class="sub">Sea Surface Temp (°C)</div>
+            </div>
+            <label class="toggle"><input type="checkbox" checked /><span class="tslider"></span></label>
+          </div>
+          <div class="feed-item">
+            <div class="feed-text">
+              <div class="name">SLA</div>
+              <div class="sub">Sea Level Anomaly (m)</div>
+            </div>
+            <label class="toggle"><input type="checkbox" checked /><span class="tslider"></span></label>
+          </div>
+          <div class="feed-item">
+            <div class="feed-text">
+              <div class="name">Wind U</div>
+              <div class="sub">Eastward Wind (m/s)</div>
+            </div>
+            <label class="toggle"><input type="checkbox" checked /><span class="tslider"></span></label>
+          </div>
+          <div class="feed-item">
+            <div class="feed-text">
+              <div class="name">Wind V</div>
+              <div class="sub">Northward Wind (m/s)</div>
+            </div>
+            <label class="toggle"><input type="checkbox" /><span class="tslider"></span></label>
+          </div>
+        </div>
+
+        <!-- Layer Visibility -->
+        <div class="panel" id="layerPanel" style="display:none">
+          <div class="panel-hdr">Layer Visibility</div>
+          <div class="feed-list" id="layerCheckList">
+            <!-- filled by buildLayerChecks() -->
+          </div>
+        </div>
+
+      </div> <!-- /left-col inner panels -->
+    </div> <!-- /left-col -->
+
+    <!-- CENTER -->
+    <div class="center-col panel">
+      <div class="panel-hdr">3D Ocean Temperature — AI Generated</div>
+      <div id="plot3d" style="flex:1;min-height:0"></div>
+      <div class="plot-footer">
+        <span>Engine: <strong>PhysVSANet-V4</strong> · Resolution: <strong>0.25° Grid</strong></span>
+        <span style="color:var(--teal)" id="footerInfo">Select a region and click Generate</span>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="right-col">
+      <div class="panel">
+        <div class="panel-hdr">Performance Metrics</div>
+        <div class="metric-grid" style="grid-template-columns:1fr 1fr">
+          <div class="mcard">
+            <div class="mlabel">Confidence</div>
+            <div class="mvalue" id="metricConfidence">–</div>
+            <div class="msub">from active channels</div>
+          </div>
+          <div class="mcard">
+            <div class="mlabel">Latency</div>
+            <div class="mvalue" id="metricLatency">–</div>
+            <div class="msub">real inference time</div>
+          </div>
+          <div class="mcard">
+            <div class="mlabel">T Min→Max</div>
+            <div class="mvalue" id="metricTRange" style="font-size:15px">–</div>
+            <div class="msub">selected region</div>
+          </div>
+          <div class="mcard">
+            <div class="mlabel">Active Channels</div>
+            <div class="mvalue" id="metricChannels">–</div>
+            <div class="msub">of 4 inputs</div>
+          </div>
+          <div class="mcard">
+            <div class="mlabel">Mean Temp</div>
+            <div class="mvalue" id="metricTMean" style="font-size:18px">–</div>
+            <div class="msub">bay average</div>
+          </div>
+          <div class="mcard">
+            <div class="mlabel">Spatial Std</div>
+            <div class="mvalue" id="metricTStd" style="font-size:18px">–</div>
+            <div class="msub">variability</div>
+          </div>
+          <div class="mcard">
+            <div class="mlabel">Valid Pixels</div>
+            <div class="mvalue" id="metricValidPx" style="font-size:18px">–</div>
+            <div class="msub">data coverage</div>
+          </div>
+          <div class="mcard">
+            <div class="mlabel">Depth Coherence</div>
+            <div class="mvalue" id="metricCoherence" style="font-size:18px">–</div>
+            <div class="msub">thermocline quality</div>
+          </div>
+        </div>
+        <div id="channelWarning"
+          style="display:none;margin:0 12px 12px;padding:8px 12px;background:rgba(255,170,0,.1);border:1px solid rgba(255,170,0,.3);border-radius:8px;font-size:11px;color:#ffaa00">
+        </div>
+      </div>
+
+      <div class="panel" style="flex:1">
+        <div class="panel-hdr">Vertical Depth Profile</div>
+        <div id="depthChart" style="flex:1;min-height:200px"></div>
+      </div>
+
+
+    </div>
+
+  </div>
+
+  </div><!-- /tab-dashboard -->
+
+  <!-- ══════════ TAB: LIVE INPUTS ══════════ -->
+  <div class="tab-content" id="tab-inputs" style="padding:20px; overflow-y:auto; display:none;">
+    <div class="panel"
+      style="display:flex; flex-direction:column; gap:20px; padding:20px; max-width:1200px; margin:0 auto;">
+      <div style="font-size:18px; font-weight:700; color:var(--teal);">Real-Time Satellite Feeds (Today)</div>
+      <div style="font-size:12px; color:var(--muted); margin-top:-15px; margin-bottom:10px;">Raw input data ingested by
+        the OceanEmbed AI model.</div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+        <div class="preview-box" style="height:250px; flex:unset;"><canvas id="sstCanvas"></canvas>
+          <div class="preview-lbl"><span>SST — Sea Surface Temp</span><span style="color:var(--muted)">57×61</span>
+          </div>
+        </div>
+        <div class="preview-box" style="height:250px; flex:unset;"><canvas id="slaCanvas"></canvas>
+          <div class="preview-lbl"><span>SLA — Sea Level Anomaly</span><span style="color:var(--muted)">57×61</span>
+          </div>
+        </div>
+        <div class="preview-box" style="height:250px; flex:unset;"><canvas id="windUCanvas"></canvas>
+          <div class="preview-lbl"><span>Wind U — Eastward</span><span style="color:var(--muted)">57×61</span></div>
+        </div>
+        <div class="preview-box" style="height:250px; flex:unset;"><canvas id="windVCanvas"></canvas>
+          <div class="preview-lbl"><span>Wind V — Northward</span><span style="color:var(--muted)">57×61</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ GLOBE MODAL ══════════ -->
+  <div id="globeModal"
+    style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:9999; flex-direction:column;">
+    <div
+      style="position:absolute; top:20px; left:20px; z-index:10; background:rgba(20,20,20,0.8); padding:20px; border-radius:12px; border:1px solid rgba(247,147,30,0.3); color:white; width:300px;">
+      <h3 style="margin-bottom:15px; color:#F7931E; font-size:16px;">3D Globe Pinpoint</h3>
+      <div style="margin-bottom:10px;">
+        <label style="font-size:11px; color:#aaaaaa; display:block; margin-bottom:5px;">Latitude (°N)</label>
+        <input type="number" id="gLat" value="15.0"
+          style="width:100%; padding:8px; background:#000; border:1px solid #333333; color:white; border-radius:4px;" />
+      </div>
+      <div style="margin-bottom:10px;">
+        <label style="font-size:11px; color:#aaaaaa; display:block; margin-bottom:5px;">Longitude (°E)</label>
+        <input type="number" id="gLon" value="87.5"
+          style="width:100%; padding:8px; background:#000; border:1px solid #333333; color:white; border-radius:4px;" />
+      </div>
+      <div style="margin-bottom:15px;">
+        <label style="font-size:11px; color:#aaaaaa; display:block; margin-bottom:5px;">Depth Level</label>
+        <select id="gDepth"
+          style="width:100%; padding:8px; background:#000; border:1px solid #333333; color:white; border-radius:4px;">
+          <option value="0">Surface (0m)</option>
+          <option value="1">50m</option>
+          <option value="2">100m</option>
+          <option value="3">150m</option>
+          <option value="4">200m</option>
+          <option value="5">500m</option>
+        </select>
+      </div>
+      <button onclick="locateOnGlobe()"
+        style="width:100%; padding:10px; background:#F7931E; border:none; color:black; font-weight:bold; border-radius:4px; cursor:pointer; margin-bottom:10px;">Locate</button>
+      <button onclick="closeGlobeModal()"
+        style="width:100%; padding:10px; background:transparent; border:1px solid #888888; color:#888888; font-weight:bold; border-radius:4px; cursor:pointer;">Close</button>
+    </div>
+    <div id="globeViz" style="flex:1; width:100%; height:100%;"></div>
+  </div>
+
+
+  <!-- ══════════ TAB 2: ANALYTICS ══════════ -->
+  <div class="tab-content" id="tab-analytics">
+    <div class="analytics-grid">
+      <!-- Monthly mean per depth -->
+      <div class="panel">
+        <div class="panel-hdr">Monthly Mean Temperature by Depth</div>
+        <div class="chart-inner" id="chartMonthly"></div>
+      </div>
+      <!-- Depth stats bar chart -->
+      <div class="panel">
+        <div class="panel-hdr">Temperature Statistics per Depth Level</div>
+        <div class="chart-inner" id="chartDepthStats"></div>
+      </div>
+      <!-- Annual temp range heatmap -->
+      <div class="panel">
+        <div class="panel-hdr">Seasonal Variation Heatmap (Depth × Month)</div>
+        <div class="chart-inner" id="chartHeatmap"></div>
+      </div>
+      <!-- Depth profile all months -->
+      <div class="panel">
+        <div class="panel-hdr">Depth Profile — All Months Overlay</div>
+        <div class="chart-inner" id="chartAllProfiles"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ TAB 3: DATA EXPLORER ══════════ -->
+  <div class="tab-content" id="tab-explorer">
+
+    <div class="explorer-left">
+      <div class="panel">
+        <div class="panel-hdr">Point Inspector</div>
+        <div class="form-row">
+          <div>
+            <div class="form-label">Latitude (°N)</div>
+            <input type="number" class="form-input" id="expLat" value="15.0" min="8" max="22" step="0.25" />
+          </div>
+          <div>
+            <div class="form-label">Longitude (°E)</div>
+            <input type="number" class="form-input" id="expLon" value="87.5" min="80" max="95" step="0.25" />
+          </div>
+          <div>
+            <div class="form-label">Day of Year</div>
+            <input type="number" class="form-input" id="expDay" value="180" min="0" max="364" />
+          </div>
+          <button class="fetch-btn" onclick="fetchExplorer()">Fetch Data</button>
+          <button class="fetch-btn primary" onclick="openGlobeModal()"
+            style="margin-top:10px; background:var(--teal); color:black; font-weight:bold;">Launch 3D Globe
+            Pinpoint</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-hdr" id="depthValuesHdr">
+          <span>Depth Values</span>
+        </div>
+        <div style="padding:12px">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Depth</th>
+                <th>Temperature</th>
+                <th>vs Surface</th>
+              </tr>
+            </thead>
+            <tbody id="depthTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="explorer-right">
+      <div class="panel" style="flex:1">
+        <div class="panel-hdr">Annual Temperature Time-Series at Selected Point</div>
+        <div id="chartTimeseries" style="flex:1;min-height:300px"></div>
+      </div>
+      <div class="panel" style="flex:1">
+        <div class="panel-hdr">Depth × Latitude Heatmap (Cross-Section)</div>
+        <div id="chartDepthLat" style="flex:1;min-height:280px"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════ TAB 4: MODEL SETTINGS ══════════ -->
+  <div class="tab-content" id="tab-settings">
+
+    <!-- Architecture Info -->
+    <div class="panel">
+      <div class="panel-hdr">Model Architecture</div>
+      <div class="settings-card">
+        <div class="arch-block" id="archBlock">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Hyperparameters -->
+    <div class="panel">
+      <div class="panel-hdr">⚙️ Hyperparameters</div>
+      <div class="settings-card">
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Embedding Dim</div>
+            <div class="setting-sub">Transformer hidden size</div>
+          </div>
+          <input type="number" class="setting-val" value="256" />
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Attention Heads</div>
+            <div class="setting-sub">Multi-head attention</div>
+          </div>
+          <input type="number" class="setting-val" value="8" />
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Decoder Layers</div>
+            <div class="setting-sub">Cross-depth transformer depth</div>
+          </div>
+          <input type="number" class="setting-val" value="4" />
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Dropout</div>
+            <div class="setting-sub">Regularization rate</div>
+          </div>
+          <input type="number" class="setting-val" value="0.1" step="0.01" />
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Batch Size</div>
+            <div class="setting-sub">Training batch (GPU)</div>
+          </div>
+          <input type="number" class="setting-val" value="32" />
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Learning Rate</div>
+            <div class="setting-sub">Adam optimizer</div>
+          </div>
+          <input type="number" class="setting-val" value="0.0001" step="0.00001" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Training Stats -->
+    <div class="panel">
+      <div class="panel-hdr">Training Summary</div>
+      <div class="settings-card">
+        <table class="stat-table" id="trainStatsTable">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Best Epoch</td>
+              <td class="hi">–</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ═══════════════════════════════════════════════════════════
+    // GLOBALS
+    // ═══════════════════════════════════════════════════════════
+    const DEPTH_LEVELS = [0, 50, 100, 150, 200, 500];
+    const DEPTH_LABELS = ['0m', '50m', '100m', '150m', '200m', '500m'];
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const COLORSCALE = [
+      [0.0, 'rgb(40,10,80)'], [0.2, 'rgb(10,50,140)'], [0.4, 'rgb(0,120,180)'],
+      [0.6, 'rgb(0,200,160)'], [0.8, 'rgb(255,160,30)'], [1.0, 'rgb(220,40,40)'],
+    ];
+    const DEPTH_COLORS = ['#F7931E', '#00aaff', '#4455ff', '#8833ff', '#cc22aa', '#ff4466'];
+
+    let map, drawnItems, currentRect = null;
+    let selBounds = { lat_min: 8, lat_max: 22, lon_min: 80, lon_max: 95 };
+    let currentDay = 180;
+    let sliderTimer = null;
+
+    // ═══════════════════════════════════════════════════════════
+    // TAB SWITCHING
+    // ═══════════════════════════════════════════════════════════
+    function switchTab(name) {
+      const tabs = ['dashboard', 'inputs', 'analytics', 'explorer', 'settings'];
+      document.querySelectorAll('.nav-btn').forEach((b, i) => {
+        b.classList.toggle('active', tabs[i] === name);
+      });
+      document.querySelectorAll('.tab-content').forEach(t => {
+        t.style.display = 'none'; // Ensure inline display:none is enforced
+        t.classList.remove('active');
+      });
+      const activeTab = document.getElementById('tab-' + name);
+      if (activeTab) {
+        activeTab.style.display = name === 'inputs' ? 'block' : ''; // Reset inline display
+        activeTab.classList.add('active');
+      }
+
+      if (name === 'analytics') loadAnalytics();
+      if (name === 'explorer') fetchExplorer();
+      if (name === 'settings') loadSettings();
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // LEAFLET MAP
+    // ═══════════════════════════════════════════════════════════
+    let isMapMaximized = false;
+    function toggleMapMaximize() {
+      isMapMaximized = !isMapMaximized;
+      const panel = document.getElementById('mapPanel');
+      const btn = document.getElementById('btn-maximize-map');
+      if (isMapMaximized) {
+        panel.classList.add('map-maximized');
+        btn.textContent = '✕';
+        btn.title = "Restore Map";
+      } else {
+        panel.classList.remove('map-maximized');
+        btn.textContent = '⛶';
+        btn.title = "Maximize Map";
+      }
+      setTimeout(() => { if (map) map.invalidateSize(); }, 300);
+    }
+
+    function initMap() {
+      map = L.map('bobMap', {
+        center: [15, 87.5], zoom: 4,
+        zoomControl: true, attributionControl: false,
+      });
+
+      // Free OSM tiles — dark mode via CSS filter (no API key needed)
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18, attribution: '© OpenStreetMap',
+      }).addTo(map);
+      // Apply dark mode filter to the tile layer
+      const style = document.createElement('style');
+      style.textContent = '.leaflet-tile-pane { filter: invert(1) hue-rotate(200deg) brightness(0.65) contrast(1.1) saturate(0.6); }';
+      document.head.appendChild(style);
+
+      // Highlight the BoB bounding box
+      L.rectangle([[8, 80], [22, 95]], {
+        color: 'rgba(247,147,30,.4)', weight: 1.5, fill: false, dashArray: '6,4',
+      }).addTo(map);
+
+      // Leaflet.draw
+      drawnItems = new L.FeatureGroup().addTo(map);
+      const drawControl = new L.Control.Draw({
+        draw: {
+          rectangle: { shapeOptions: { color: '#F7931E', weight: 2, fillOpacity: .1 } },
+          polyline: false, circle: false, marker: false, circlemarker: false, polygon: false,
+        },
+        edit: { featureGroup: drawnItems },
+      });
+      map.addControl(drawControl);
+
+      map.on(L.Draw.Event.CREATED, function (e) {
+        drawnItems.clearLayers();
+        drawnItems.addLayer(e.layer);
+        currentRect = e.layer;
+        const b = e.layer.getBounds();
+        selBounds = {
+          lat_min: Math.max(8, +b.getSouth().toFixed(2)),
+          lat_max: Math.min(22, +b.getNorth().toFixed(2)),
+          lon_min: Math.max(80, +b.getWest().toFixed(2)),
+          lon_max: Math.min(95, +b.getEast().toFixed(2)),
+        };
+        const txt = `${selBounds.lat_min}°–${selBounds.lat_max}°N · ${selBounds.lon_min}°–${selBounds.lon_max}°E`;
+        document.getElementById('selCoords').textContent = txt;
+        document.getElementById('selectionBar').classList.add('visible');
+        document.getElementById('mapInfo').innerHTML = `Region selected! Click <strong style="color:var(--teal)">Generate 3D Model</strong> to visualize.`;
+      });
+    }
+
+    function clearSelection() {
+      drawnItems.clearLayers();
+      currentRect = null;
+      selBounds = { lat_min: 8, lat_max: 22, lon_min: 80, lon_max: 95 };
+      document.getElementById('selectionBar').classList.remove('visible');
+      document.getElementById('mapInfo').textContent = 'Draw a rectangle on the map to select a region.';
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // PREDICTION & 3D PLOT
+    // ═══════════════════════════════════════════════════════════
+    function getChannelStates() {
+      const checkboxes = document.querySelectorAll('.feed-list .toggle input[type=checkbox]');
+      const keys = ['sst', 'sla', 'wind_u', 'wind_v'];
+      const state = {};
+      checkboxes.forEach((cb, i) => { state[keys[i]] = cb.checked ? '1' : '0'; });
+      return state;
+    }
+
+    function animateMetric(id, newVal, suffix = '') {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.transition = 'opacity 0.2s';
+      el.style.opacity = '0';
+      setTimeout(() => {
+        el.textContent = newVal + suffix;
+        el.style.opacity = '1';
+      }, 200);
+    }
+
+    async function generatePrediction() {
+      // Automatically restore map if maximized
+      if (isMapMaximized) {
+        toggleMapMaximize();
+      }
+
+      const btn = document.getElementById('genBtn');
+      const rBtn = document.getElementById('runBtn');
+      btn.disabled = true; btn.textContent = 'Generating...';
+      rBtn.disabled = true;
+
+      try {
+        const channels = getChannelStates();
+        const params = new URLSearchParams({
+          day: currentDay,
+          lat_min: selBounds.lat_min, lat_max: selBounds.lat_max,
+          lon_min: selBounds.lon_min, lon_max: selBounds.lon_max,
+          ...channels,
+        });
+        const res = await fetch(`/api/prediction?${params}`);
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(`Server returned ${res.status}: ${txt.substring(0, 100)}`);
+        }
+        const data = await res.json();
+        window.lastPredictionData = data;
+        const s = data.stats;
+
+        build3DPlot(data);
+        buildDepthChart(data);
+
+        // ── Update ALL metrics from real AI response ──────────────────
+        document.getElementById('footerInfo').textContent =
+          `${data.date_label} · ${selBounds.lat_min}°–${selBounds.lat_max}°N · ${selBounds.lon_min}°–${selBounds.lon_max}°E`;
+
+        animateMetric('metricConfidence', s.confidence, '%');
+        animateMetric('metricLatency', s.inference_ms, 'ms');
+        animateMetric('metricTRange', `${s.t_min}→${s.t_max}`);
+        animateMetric('metricChannels', `${s.active_channels}/4`);
+        animateMetric('metricTMean', s.t_mean, '°C');
+        animateMetric('metricTStd', s.t_std, '°C');
+        animateMetric('metricValidPx', s.valid_pct, '%');
+        animateMetric('metricCoherence', s.depth_coherence, '%');
+
+        // ── Colour-code confidence ────────────────────────────────────
+        const confEl = document.getElementById('metricConfidence');
+        if (confEl) {
+          confEl.style.color = s.confidence >= 80 ? 'var(--teal)' :
+            s.confidence >= 50 ? '#ffaa00' : 'var(--danger)';
+        }
+
+        // ── Channel warning banner ────────────────────────────────────
+        const disabled = Object.entries(data.channels_on).filter(([, v]) => !v).map(([k]) => k.toUpperCase().replace('_', ' '));
+        const warn = document.getElementById('channelWarning');
+        if (warn) {
+          if (disabled.length) {
+            warn.textContent = `Channels disabled: ${disabled.join(', ')} — prediction quality reduced`;
+            warn.style.display = 'block';
+          } else {
+            warn.style.display = 'none';
+          }
+        }
+
+      } catch (err) {
+        console.error("Prediction Error:", err);
+        alert(`Failed to generate prediction:\n${err.message}`);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Generate 3D Model';
+        rBtn.disabled = false;
+      }
+    }
+
+    function build3DPlot(data) {
+      const lats = data.lats, lons = data.lons;
+      const nLat = lats.length, nLon = lons.length;
+      const LONg = [], LATg = [];
+      for (let i = 0; i < nLat; i++) { LONg.push(lons); LATg.push(new Array(nLon).fill(lats[i])); }
+
+      // data.layers[0] = 0m surface (~24°C warm), data.layers[5] = 500m deep (~7°C cold)
+      // Place surface at z=0 (top), deep at z=-500 (bottom)
+      const depthZ = [0, -50, -100, -150, -200, -500];
+      const names = ['Surface (0m)', '50m', '100m', '150m', '200m', '500m (Deep)'];
+
+      let gMin = Infinity, gMax = -Infinity;
+      data.layers.forEach(l => l.data.forEach(r => r.forEach(v => {
+        if (v !== null) { gMin = Math.min(gMin, v); gMax = Math.max(gMax, v); }
+      })));
+
+      // Render deepest layer first so surface draws on top
+      const traces = [];
+      for (let i = data.layers.length - 1; i >= 0; i--) {
+        const layer = data.layers[i];
+        traces.push({
+          type: 'surface', x: LONg, y: LATg,
+          z: new Array(nLat).fill(null).map(() => new Array(nLon).fill(depthZ[i])),
+          surfacecolor: layer.data, customdata: layer.data, colorscale: COLORSCALE,
+          cmin: gMin, cmax: gMax, showscale: (i === 0),
+          colorbar: {
+            title: { text: 'Temp (°C)', font: { color: '#aaaaaa', size: 11 } },
+            tickfont: { color: '#aaaaaa' }, len: .55, x: 1.01, bgcolor: 'rgba(0,0,0,0)'
+          },
+          name: names[i], opacity: 0.88,
+          hovertemplate: `<b>${names[i]}</b><br>Lat:%{y:.2f}°N<br>Lon:%{x:.2f}°E<br>T:%{customdata:.2f}°C<extra></extra>`,
+        });
+      }
+
+      // Vertical edge lines
+      [[lons[0], lats[0]], [lons[lons.length - 1], lats[0]],
+      [lons[0], lats[lats.length - 1]], [lons[lons.length - 1], lats[lats.length - 1]]
+      ].forEach(([lon, lat]) => {
+        traces.push({
+          type: 'scatter3d', mode: 'lines', x: [lon, lon], y: [lat, lat], z: [-500, 0],
+          line: { color: 'rgba(0,255,200,.25)', width: 1.5 }, showlegend: false, hoverinfo: 'skip'
+        });
+      });
+
+      Plotly.react('plot3d', traces, {
+        paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+        margin: { l: 0, r: 0, t: 10, b: 0 },
+        scene: {
+          bgcolor: 'rgba(0,0,0,0)',
+          xaxis: { title: { text: 'Longitude (°E)', font: { color: '#aaaaaa' } }, tickfont: { color: '#aaaaaa' }, gridcolor: 'rgba(100,180,255,.12)', showbackground: false, showgrid: false, zeroline: false, showspikes: false, showline: true, linecolor: 'rgba(255,255,255,0.3)' },
+          yaxis: { title: { text: 'Latitude (°N)', font: { color: '#aaaaaa' } }, tickfont: { color: '#aaaaaa' }, gridcolor: 'rgba(100,180,255,.12)', showbackground: false, showgrid: false, zeroline: false, showspikes: false, showline: true, linecolor: 'rgba(255,255,255,0.3)' },
+          zaxis: {
+            title: { text: 'Depth (m)', font: { color: '#aaaaaa' } }, tickfont: { color: '#aaaaaa' },
+            tickvals: depthZ, ticktext: DEPTH_LABELS, gridcolor: 'rgba(100,180,255,.12)', showbackground: false, showgrid: false, zeroline: false, showspikes: false, showline: true, linecolor: 'rgba(255,255,255,0.3)'
+          },
+          camera: { eye: { x: 1.6, y: -1.5, z: 1.0 } }, aspectmode: 'manual', aspectratio: { x: 1.5, y: 1, z: .6 },
+        },
+        legend: { font: { color: 'white' }, bgcolor: 'rgba(255,255,255,.04)', bordercolor: 'rgba(0,200,180,.3)', borderwidth: 1 },
+      }, {
+        responsive: true, displayModeBar: true,
+        modeBarButtonsToRemove: ['sendDataToCloud', 'toImage'],
+        displaylogo: false
+      });
+
+      // Show layer checkbox panel after first build
+      document.getElementById('layerPanel').style.display = '';
+      buildLayerChecks();
+
+      // Click on 3D plot → update depth profile for that point
+      const plotDiv = document.getElementById('plot3d');
+      plotDiv.removeAllListeners && plotDiv.removeAllListeners('plotly_click');
+      plotDiv.on('plotly_click', async function (eventData) {
+        if (!eventData || !eventData.points || !eventData.points.length) return;
+        const pt = eventData.points[0];
+        if (pt.curveNumber >= 6) return; // skip edge lines (indices 6-9)
+        const lon = parseFloat(pt.x);
+        const lat = parseFloat(pt.y);
+        try {
+          const day = window.lastPredictionData?.day ?? currentDay;
+          const res = await fetch(`/api/prediction?day=${day}&lat_min=${lat - 0.13}&lat_max=${lat + 0.13}&lon_min=${lon - 0.13}&lon_max=${lon + 0.13}`);
+          const d = await res.json();
+          buildDepthChartAtPoint(d.depth_profile, lat, lon);
+        } catch (e) { console.warn('Click profile fetch failed', e); }
+      });
+    }
+
+    function buildDepthChart(data) {
+      buildDepthChartAtPoint(data.depth_profile, null, null);
+    }
+
+    function buildDepthChartAtPoint(profile, lat, lon) {
+      const title = (lat !== null && lon !== null)
+        ? `Lat ${lat.toFixed(2)}°N, Lon ${lon.toFixed(2)}°E`
+        : 'Bay Average';
+      Plotly.react('depthChart', [{
+        type: 'scatter', mode: 'lines+markers',
+        x: profile, y: DEPTH_LEVELS, name: title,
+        line: { color: lat !== null ? '#00e5ff' : '#F7931E', width: 3 },
+        marker: {
+          size: 8, color: lat !== null ? '#00e5ff' : '#F7931E',
+          line: { color: 'white', width: 1.5 }
+        },
+        hovertemplate: 'Depth:%{y}m<br>T:%{x:.2f}°C<extra></extra>',
+      }], {
+        paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+        margin: { l: 55, r: 12, t: 30, b: 45 },
+        title: { text: lat !== null ? `📍 ${title}` : '', font: { color: '#aaa', size: 10 }, x: 0.5 },
+        xaxis: { title: { text: 'Temp (°C)', font: { color: '#aaaaaa', size: 11 } }, tickfont: { color: '#aaaaaa', size: 10 }, gridcolor: 'rgba(100,180,255,.1)' },
+        yaxis: { title: { text: 'Depth (m)', font: { color: '#aaaaaa', size: 11 } }, autorange: 'reversed', tickfont: { color: '#aaaaaa', size: 10 }, gridcolor: 'rgba(100,180,255,.1)' },
+        font: { color: 'white' },
+      }, { responsive: true, displayModeBar: false });
+    }
+
+    // Layer checkbox toggle
+    const LAYER_NAMES = ['Surface (0m)', '50m', '100m', '150m', '200m', '500m (Deep)'];
+    // traces are rendered reversed (index 5..0 = traces 0..5 in Plotly)
+    // then 4 edge lines follow
+    function layerTraceIndex(depthIdx) {
+      // build3DPlot pushes i from 5 down to 0, so depth 5→trace[0], 0→trace[5]
+      return 5 - depthIdx;
+    }
+
+    function buildLayerChecks() {
+      const list = document.getElementById('layerCheckList');
+      if (list.children.length) return; // already built
+      LAYER_NAMES.forEach((name, i) => {
+        const item = document.createElement('div');
+        item.className = 'feed-item';
+        item.innerHTML = `
+          <div class="feed-text">
+            <div class="name" style="font-size:12px">${name}</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" checked id="layerCb_${i}" onchange="toggleLayer(${i}, this.checked)">
+            <span class="tslider"></span>
+          </label>`;
+        list.appendChild(item);
+      });
+    }
+
+    function toggleLayer(depthIdx, visible) {
+      const plotDiv = document.getElementById('plot3d');
+      if (!plotDiv || !plotDiv.data || !plotDiv.data.length) return;
+      const ti = layerTraceIndex(depthIdx);
+      Plotly.restyle('plot3d', { visible: visible }, [ti]);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ANALYTICS TAB
+    // ═══════════════════════════════════════════════════════════
+    let analyticsLoaded = false;
+    async function loadAnalytics() {
+      if (analyticsLoaded) return;
+      analyticsLoaded = true;
+      const res = await fetch('/api/analytics');
+      const data = await res.json();
+
+      // 1. Monthly mean per depth (line chart)
+      const traces1 = DEPTH_LEVELS.map((d, i) => ({
+        type: 'scatter', mode: 'lines+markers', name: DEPTH_LABELS[i],
+        x: MONTHS, y: MONTHS.map(m => data.monthly_means[m][i]),
+        line: { color: DEPTH_COLORS[i], width: 2.5 },
+        marker: { size: 5, color: DEPTH_COLORS[i] },
+      }));
+      Plotly.react('chartMonthly', traces1, mkLayout('Month', 'Temperature (°C)'), cfg());
+
+      // 2. Depth stats bar chart
+      Plotly.react('chartDepthStats', [
+        { type: 'bar', name: 'Mean', x: DEPTH_LABELS, y: data.depth_stats.map(d => d.mean), marker: { color: DEPTH_COLORS } },
+        { type: 'bar', name: 'Min', x: DEPTH_LABELS, y: data.depth_stats.map(d => d.min), marker: { color: 'rgba(0,150,255,.5)' } },
+        { type: 'bar', name: 'Max', x: DEPTH_LABELS, y: data.depth_stats.map(d => d.max), marker: { color: 'rgba(255,100,50,.5)' } },
+      ], { ...mkLayout('Depth Level', 'Temperature (°C)'), barmode: 'group' }, cfg());
+
+      // 3. Heatmap: depth × month
+      Plotly.react('chartHeatmap', [{
+        type: 'heatmap', colorscale: COLORSCALE,
+        x: MONTHS, y: DEPTH_LABELS,
+        z: DEPTH_LEVELS.map((_, i) => MONTHS.map(m => data.monthly_means[m][i])),
+        hovertemplate: 'Month:%{x}<br>Depth:%{y}<br>T:%{z:.2f}°C<extra></extra>',
+        colorbar: { tickfont: { color: '#aaaaaa' }, title: { text: '°C', font: { color: '#aaaaaa' } } },
+      }], mkLayout('Month', 'Depth'), cfg());
+
+      // 4. All depth profiles overlaid per month (scatter)
+      const traces4 = MONTHS.map((m, mi) => ({
+        type: 'scatter', mode: 'lines', name: m,
+        x: DEPTH_LEVELS.map((_, i) => data.monthly_means[m][i]),
+        y: DEPTH_LEVELS,
+        line: { width: 1.5, color: `hsl(${mi * 30},70%,55%)` },
+      }));
+      Plotly.react('chartAllProfiles', traces4,
+        { ...mkLayout('Temperature (°C)', 'Depth (m)'), yaxis: { ...mkLayout().yaxis, autorange: 'reversed' } }, cfg());
+    }
+
+    function mkLayout(xTitle = '', yTitle = '') {
+      return {
+        paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+        margin: { l: 55, r: 15, t: 15, b: 50 }, font: { color: 'white' },
+        legend: { font: { color: 'white', size: 10 }, bgcolor: 'rgba(0,0,0,.3)' },
+        xaxis: { title: { text: xTitle, font: { color: '#aaaaaa', size: 11 } }, tickfont: { color: '#aaaaaa', size: 10 }, gridcolor: 'rgba(100,180,255,.1)' },
+        yaxis: { title: { text: yTitle, font: { color: '#aaaaaa', size: 11 } }, tickfont: { color: '#aaaaaa', size: 10 }, gridcolor: 'rgba(100,180,255,.1)' },
+      };
+    }
+    function cfg() { return { responsive: true, displayModeBar: false }; }
+
+    // ═══════════════════════════════════════════════════════════
+    // DATA EXPLORER TAB
+    // ═══════════════════════════════════════════════════════════
+    // Debounce helper
+    let _explorerTimer = null;
+    function scheduleExplorer(delayMs = 600) {
+      clearTimeout(_explorerTimer);
+      _explorerTimer = setTimeout(fetchExplorer, delayMs);
+    }
+
+    async function fetchExplorer() {
+      const lat = parseFloat(document.getElementById('expLat').value) || 15;
+      const lon = parseFloat(document.getElementById('expLon').value) || 87.5;
+      const day = parseInt(document.getElementById('expDay').value) || 180;
+
+      // Show loading state
+      const btn = document.querySelector('.fetch-btn');
+      btn.disabled = true;
+      btn.textContent = 'Loading…';
+      document.getElementById('depthTable').innerHTML =
+        `<tr><td colspan="3" style="text-align:center;padding:14px;color:#aaa">
+           ⏳ Fetching data…</td></tr>`;
+      document.getElementById('depthValuesHdr').querySelector('span:first-child').textContent =
+        `Depth Values — Lat ${lat}°N, Lon ${lon}°E, Day ${day}`;
+
+      try {
+        // Time-series
+        const tsRes = await fetch(`/api/timeseries?lat=${lat}&lon=${lon}`);
+        const tsData = await tsRes.json();
+
+        const tTraces = DEPTH_LEVELS.map((d, i) => ({
+          type: 'scatter', mode: 'lines', name: DEPTH_LABELS[i],
+          x: tsData.days, y: tsData.series[String(d)],
+          line: { color: DEPTH_COLORS[i], width: 2 },
+          hovertemplate: `Day %{x} · %{y:.2f}°C<extra>${DEPTH_LABELS[i]}</extra>`,
+        }));
+        Plotly.react('chartTimeseries', tTraces, mkLayout('Day of Year', 'Temperature (°C)'), cfg());
+
+        // Depth-lat heatmap
+        const hlRes = await fetch(`/api/depth_heatmap?day=${day}&lon=${lon}`);
+        const hlData = await hlRes.json();
+        Plotly.react('chartDepthLat', [{
+          type: 'heatmap', colorscale: COLORSCALE,
+          x: hlData.lats, y: DEPTH_LABELS,
+          z: hlData.data,
+          hovertemplate: 'Lat:%{x:.2f}°N<br>Depth:%{y}<br>T:%{z:.2f}°C<extra></extra>',
+          colorbar: { tickfont: { color: '#aaaaaa' }, title: { text: '°C', font: { color: '#aaaaaa' } } },
+        }], mkLayout('Latitude (°N)', 'Depth'), cfg());
+
+        // Point values table — single nearest grid point
+        const predRes = await fetch(`/api/prediction?day=${day}&lat_min=${lat - .1}&lat_max=${lat + .1}&lon_min=${lon - .1}&lon_max=${lon + .1}`);
+        const predData = await predRes.json();
+        const tbody = document.getElementById('depthTable');
+        const surfT = predData.depth_profile[0];
+        tbody.innerHTML = DEPTH_LEVELS.map((d, i) => {
+          const t = predData.depth_profile[i];
+          const diff = (t - surfT).toFixed(2);
+          const sign = diff >= 0 ? '+' : '';
+          const diffColor = diff < 0 ? '#6ec6ff' : '#ff6666';
+          return `<tr>
+        <td>${DEPTH_LABELS[i]}</td>
+        <td class="tval">${t !== null ? t.toFixed(2) : 'N/A'} °C</td>
+        <td style="color:${diffColor}">${sign}${diff}°C</td>
+      </tr>`;
+        }).join('');
+
+        // Update header with queried point
+        document.getElementById('depthValuesHdr').querySelector('span:first-child').textContent =
+          `Depth @ Lat ${lat}°N, Lon ${lon}°E, Day ${day}`;
+
+      } catch (err) {
+        document.getElementById('depthTable').innerHTML =
+          `<tr><td colspan="3" style="text-align:center;padding:14px;color:#f66">
+             ⚠ Error: ${err.message}</td></tr>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Fetch Data';
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // MODEL SETTINGS TAB
+    // ═══════════════════════════════════════════════════════════
+    let settingsLoaded = false;
+    async function loadSettings() {
+      if (settingsLoaded) return;
+      settingsLoaded = true;
+      const res = await fetch('/api/model_info');
+      const info = await res.json();
+
+      document.getElementById('archBlock').innerHTML = `
+    <strong>Model Name:</strong> ${info.name} (${info.version})<br>
+    <strong>Architecture:</strong> ${info.architecture}<br>
+    <strong>Parameters:</strong> ${info.parameters}<br>
+    <strong>Model Size:</strong> ${info.size_mb} MB<br>
+    <strong>Input Channels:</strong> ${info.input_channels.join(', ')}<br>
+    <strong>Output:</strong> ${info.depth_levels.length} depth levels (${info.depth_levels.join(', ')} m)<br>
+    <strong>Loss Terms:</strong> ${info.loss_terms.join(', ')}<br>
+    <strong>Training GPU:</strong> ${info.training_gpu}
+  `;
+
+      const rows = [
+        ['Best Epoch', info.best_epoch],
+        ['Val Loss', info.val_total],
+        ['Batch Size', info.batch_size],
+        ['Train Years', info.trained_years.join(', ')],
+        ['Val Year', info.val_year],
+        ['Test Year', info.test_year],
+        ['Latest Live Data', info.live_date],
+      ];
+      document.getElementById('trainStatsTable').querySelector('tbody').innerHTML =
+        rows.map(([k, v]) => `<tr><td>${k}</td><td class="hi">${v}</td></tr>`).join('');
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // DAY SLIDER
+    // ═══════════════════════════════════════════════════════════
+    const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const CUM = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365];
+    function dayToDate(d) {
+      const mi = CUM.findIndex((c, i) => d < CUM[i + 1]);
+      return `${d - CUM[mi] + 1} ${MONTHS_SHORT[mi]} 2023`;
+    }
+
+
+
+    // ═══════════════════════════════════════════════════════════
+    // REAL SATELLITE HEATMAPS
+    // ═══════════════════════════════════════════════════════════
+    function drawRealData(id, grid, h1, h2) {
+      const c = document.getElementById(id);
+      if (!c || !grid || !grid.length) return;
+      const ctx = c.getContext('2d');
+
+      const rows = grid.length;
+      const cols = grid[0].length;
+
+      c.width = cols * 2;
+      c.height = rows * 2;
+
+      // Find min and max for normalization
+      let min = Infinity, max = -Infinity;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          let val = grid[r][c];
+          if (val !== null) {
+            if (val < min) min = val;
+            if (val > max) max = val;
+          }
+        }
+      }
+      if (max === min) max = min + 1; // avoid div by zero
+
+      const W = c.width, H = c.height;
+      const cellW = W / cols;
+      const cellH = H / rows;
+
+      for (let r = 0; r < rows; r++) {
+        for (let col = 0; col < cols; col++) {
+          let val = grid[r][col];
+          if (val === null) {
+            ctx.fillStyle = '#000000'; // land mask
+          } else {
+            const t = (val - min) / (max - min);
+            // Map t (0..1) to hue (h1..h2) and brightness
+            ctx.fillStyle = `hsl(${h1 + t * (h2 - h1)}, 70%, ${28 + t * 28}%)`;
+          }
+          // Note: grid row 0 is usually lat_min (South). Canvas y=0 is top. 
+          // We flip Y so South is at the bottom.
+          ctx.fillRect(col * cellW, H - (r + 1) * cellH, cellW + 1, cellH + 1);
+        }
+      }
+    }
+
+    async function fetchAndDrawLiveInputs() {
+      try {
+        const res = await fetch('/api/live_inputs');
+        if (!res.ok) return;
+        const json = await res.json();
+        drawRealData('sstCanvas', json.data.sst, 180, 30);
+        drawRealData('slaCanvas', json.data.sla, 200, 140);
+        drawRealData('windUCanvas', json.data.wind_u, 140, 260);
+        drawRealData('windVCanvas', json.data.wind_v, 260, 320);
+      } catch (e) {
+        console.error("Failed to load live inputs", e);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // API VERIFY
+    // ═══════════════════════════════════════════════════════════
+
+
+    // ═══════════════════════════════════════════════════════════
+
+    // ═══════════════════════════════════════════════════════════
+    // 3D GLOBE PINPOINT (GLOBE.GL)
+    // ═══════════════════════════════════════════════════════════
+    let world = null;
+
+    function openGlobeModal() {
+      document.getElementById('globeModal').style.display = 'flex';
+      if (!world) {
+        world = Globe()(document.getElementById('globeViz'))
+          .globeImageUrl('//unpkg.com/three-globe/example/img/earth-dark.jpg')
+          .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+          .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
+          .pointOfView({ lat: 15, lng: 87.5, altitude: 2 })
+          .htmlElementsData([])
+          .htmlElement(d => {
+            const el = document.createElement('div');
+            const c = d.color || '#F7931E';
+            el.innerHTML = `
+          <div style="position:relative; background:#111111; border:2px solid ${c}; padding:10px; border-radius:8px; color:white; min-width:120px; pointer-events:none; transform:translate(-50%, calc(-100% - 12px));">
+            <div style="font-size:10px; color:#aaaaaa; margin-bottom:4px;">${d.lat}°N, ${d.lng}°E</div>
+            <div style="font-size:16px; font-weight:bold; color:${c};">${d.temp}</div>
+            <div style="font-size:10px; color:#aaa; margin-top:4px;">Depth: ${d.depthText}</div>
+            <div style="position:absolute; bottom:-12px; left:50%; transform:translateX(-50%); width:0; height:0; border-left:10px solid transparent; border-right:10px solid transparent; border-top:10px solid ${c};"></div>
+          </div>
+        `;
+            return el;
+          });
+
+        // Auto-rotate initially
+        world.controls().autoRotate = true;
+        world.controls().autoRotateSpeed = 0.5;
+      }
+    }
+
+    function closeGlobeModal() {
+      document.getElementById('globeModal').style.display = 'none';
+    }
+
+    async function locateOnGlobe() {
+      const lat = parseFloat(document.getElementById('gLat').value);
+      const lon = parseFloat(document.getElementById('gLon').value);
+      const depthIdx = parseInt(document.getElementById('gDepth').value);
+      const depthSelect = document.getElementById('gDepth');
+      const depthText = depthSelect.options[depthSelect.selectedIndex].text;
+
+      // Stop rotation
+      world.controls().autoRotate = false;
+
+      // Fetch temp
+      let tempLabel = "Loading...";
+      world.htmlElementsData([{ lat: lat, lng: lon, temp: tempLabel, depthText: depthText }]);
+      world.pointOfView({ lat: lat, lng: lon, altitude: 0.1 }, 2000);
+
+      try {
+        let val = null;
+        let color = '#F7931E';
+        if (window.lastPredictionData) {
+          const d = window.lastPredictionData;
+          let latIdx = 0; let minLatD = 999;
+          d.lats.forEach((l, i) => { if (Math.abs(l - lat) < minLatD) { minLatD = Math.abs(l - lat); latIdx = i; } });
+          let lonIdx = 0; let minLonD = 999;
+          d.lons.forEach((l, i) => { if (Math.abs(l - lon) < minLonD) { minLonD = Math.abs(l - lon); lonIdx = i; } });
+          val = d.layers[depthIdx].data[latIdx][lonIdx];
+        }
+
+        if (val !== null && val !== undefined) {
+          tempLabel = val.toFixed(2) + ' °C';
+
+          // Simple colormap for the pin outline matching Turbo roughly (-5 to 35)
+          const t = Math.max(0, Math.min(1, (val - (-5)) / 40));
+          // Approximation of Turbo colormap
+          const r = Math.floor(Math.max(0, 1.5 - Math.abs(1 - 4 * (t - 0.5))) * 255);
+          const g = Math.floor(Math.max(0, 1.5 - Math.abs(1 - 4 * (t - 0.25))) * 255);
+          const b = Math.floor(Math.max(0, 1.5 - Math.abs(1 - 4 * t)) * 255);
+          color = `rgb(${r},${g},${b})`;
+        } else {
+          tempLabel = 'No Data (Run Prediction)';
+        }
+        world.htmlElementsData([{ lat: lat, lng: lon, temp: tempLabel, depthText: depthText, color: color }]);
+      } catch (e) {
+        console.error(e);
+        world.htmlElementsData([{ lat: lat, lng: lon, temp: 'Error', depthText: depthText, color: '#ff4466' }]);
+      }
+    }
+
+    // INIT
+    // ═══════════════════════════════════════════════════════════
+    window.addEventListener('load', async () => {
+      initMap();
+      await fetchAndDrawLiveInputs();
+
+      // Export & Save Listeners
+      document.getElementById('btn-export-csv').addEventListener('click', () => {
+        let url = `/api/export/csv?day=${currentDay}&lat_min=${currentLatMin}&lat_max=${currentLatMax}&lon_min=${currentLonMin}&lon_max=${currentLonMax}`;
+        window.location.href = url;
+      });
+
+      document.getElementById('btn-export-netcdf').addEventListener('click', () => {
+        window.location.href = `/api/export/netcdf`;
+      });
+
+      document.getElementById('btn-export-screenshot').addEventListener('click', () => {
+        const plotDiv = document.getElementById('plot3d');
+        if (plotDiv && plotDiv.data) {
+          Plotly.downloadImage(plotDiv, { format: 'png', width: 1200, height: 800, filename: `oceanembed_3d_${currentDay}` });
+        } else {
+          alert("Please generate a 3D model first.");
+        }
+      });
+
+      // Initial prediction (full BoB, day 180)
+      await generatePrediction();
+      document.getElementById('loader').classList.add('hidden');
+
+      // ── Real-time depth table: auto-fetch on any input change ──
+      ['expLat', 'expLon', 'expDay'].forEach(id => {
+        document.getElementById(id).addEventListener('input', () => scheduleExplorer(600));
+        document.getElementById(id).addEventListener('change', () => scheduleExplorer(200));
+      });
+    });
+  </script>
+</body>
+
+</html>
