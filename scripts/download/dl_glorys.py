@@ -72,7 +72,6 @@ cmd = [
     "--start-datetime",    f"{START_DATE}T00:00:00",
     "--end-datetime",      f"{END_DATE}T23:59:59",
     "--output-directory",  OUTPUT_DIR,
-    "--force-download",
     "--skip-existing",
 ]
 for v in VARIABLES:
