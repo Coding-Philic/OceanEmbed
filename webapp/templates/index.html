@@ -945,6 +945,7 @@
     #loader.hidden {
       opacity: 0;
       pointer-events: none;
+      display: none !important;
     }
 
     .spin {
@@ -2208,38 +2209,53 @@
       }
     }
 
-    // INIT
+    // Global Immediate safety timeout: Dismiss loader in max 1.5s regardless of network/CDN speed
+    const dismissLoader = () => {
+      const loader = document.getElementById('loader');
+      if (loader && !loader.classList.contains('hidden')) {
+        loader.classList.add('hidden');
+        setTimeout(() => { if (loader) loader.style.display = 'none'; }, 300);
+      }
+    };
+    setTimeout(dismissLoader, 1500);
+
+    // INIT on DOMContentLoaded (runs in milliseconds without waiting for heavy 3.5MB scripts)
     // ═══════════════════════════════════════════════════════════
-    window.addEventListener('load', async () => {
-      initMap();
-      await fetchAndDrawLiveInputs();
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        initMap();
+        fetchAndDrawLiveInputs();
+      } catch (err) {
+        console.warn("Map init note:", err);
+      }
 
       // Export & Save Listeners
-      document.getElementById('btn-export-csv').addEventListener('click', () => {
-        let url = `/api/export/csv?day=${currentDay}&lat_min=${currentLatMin}&lat_max=${currentLatMax}&lon_min=${currentLonMin}&lon_max=${currentLonMax}`;
-        window.location.href = url;
-      });
+      const btnCsv = document.getElementById('btn-export-csv');
+      if (btnCsv) {
+        btnCsv.addEventListener('click', () => {
+          let url = `/api/export/csv?day=${currentDay}&lat_min=${currentLatMin}&lat_max=${currentLatMax}&lon_min=${currentLonMin}&lon_max=${currentLonMax}`;
+          window.location.href = url;
+        });
+      }
 
-      document.getElementById('btn-export-netcdf').addEventListener('click', () => {
-        window.location.href = `/api/export/netcdf`;
-      });
+      const btnNc = document.getElementById('btn-export-netcdf');
+      if (btnNc) {
+        btnNc.addEventListener('click', () => {
+          window.location.href = `/api/export/netcdf`;
+        });
+      }
 
-      document.getElementById('btn-export-screenshot').addEventListener('click', () => {
-        const plotDiv = document.getElementById('plot3d');
-        if (plotDiv && plotDiv.data) {
-          Plotly.downloadImage(plotDiv, { format: 'png', width: 1200, height: 800, filename: `oceanembed_3d_${currentDay}` });
-        } else {
-          alert("Please generate a 3D model first.");
-        }
-      });
-
-      // Safety timeout: ensure loader always fades away even if WebGL/CDN is slow in Chrome
-      setTimeout(() => {
-        const loader = document.getElementById('loader');
-        if (loader && !loader.classList.contains('hidden')) {
-          loader.classList.add('hidden');
-        }
-      }, 2500);
+      const btnImg = document.getElementById('btn-export-screenshot');
+      if (btnImg) {
+        btnImg.addEventListener('click', () => {
+          const plotDiv = document.getElementById('plot3d');
+          if (plotDiv && plotDiv.data && window.Plotly) {
+            Plotly.downloadImage(plotDiv, { format: 'png', width: 1200, height: 800, filename: `oceanembed_3d_${currentDay}` });
+          } else {
+            alert("Please generate a 3D model first.");
+          }
+        });
+      }
 
       try {
         // Initial prediction (full BoB, day 180)
@@ -2247,14 +2263,16 @@
       } catch (err) {
         console.warn("Initial prediction notice:", err);
       } finally {
-        const loader = document.getElementById('loader');
-        if (loader) loader.classList.add('hidden');
+        dismissLoader();
       }
 
       // ── Real-time depth table: auto-fetch on any input change ──
       ['expLat', 'expLon', 'expDay'].forEach(id => {
-        document.getElementById(id).addEventListener('input', () => scheduleExplorer(600));
-        document.getElementById(id).addEventListener('change', () => scheduleExplorer(200));
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('input', () => scheduleExplorer(600));
+          el.addEventListener('change', () => scheduleExplorer(200));
+        }
       });
     });
   </script>
