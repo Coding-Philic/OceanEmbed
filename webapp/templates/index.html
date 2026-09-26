@@ -14,7 +14,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
   <!-- Globe.gl -->
-  <script src="//unpkg.com/globe.gl"></script>
+  <script src="https://unpkg.com/globe.gl"></script>
   <!-- Plotly -->
   <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 
@@ -2233,9 +2233,23 @@
         }
       });
 
-      // Initial prediction (full BoB, day 180)
-      await generatePrediction();
-      document.getElementById('loader').classList.add('hidden');
+      // Safety timeout: ensure loader always fades away even if WebGL/CDN is slow in Chrome
+      setTimeout(() => {
+        const loader = document.getElementById('loader');
+        if (loader && !loader.classList.contains('hidden')) {
+          loader.classList.add('hidden');
+        }
+      }, 2500);
+
+      try {
+        // Initial prediction (full BoB, day 180)
+        await generatePrediction();
+      } catch (err) {
+        console.warn("Initial prediction notice:", err);
+      } finally {
+        const loader = document.getElementById('loader');
+        if (loader) loader.classList.add('hidden');
+      }
 
       // ── Real-time depth table: auto-fetch on any input change ──
       ['expLat', 'expLon', 'expDay'].forEach(id => {
