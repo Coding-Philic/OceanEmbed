@@ -1,0 +1,19 @@
+[Unit]
+Description=OceanEmbed 3D Ocean Intelligence Web Application
+After=network.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/OceanEmbed
+Environment="PATH=/home/ubuntu/OceanEmbed/venv/bin"
+ExecStart=/home/ubuntu/OceanEmbed/venv/bin/gunicorn \
+    --workers 2 \
+    --bind 127.0.0.1:5050 \
+    --timeout 120 \
+    webapp.app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
