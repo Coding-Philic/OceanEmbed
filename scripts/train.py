@@ -9,7 +9,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+# Ensure src/ is on sys.path even when not installed via pip
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT / "src"))
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import pytorch_lightning as pl
 from omegaconf import OmegaConf

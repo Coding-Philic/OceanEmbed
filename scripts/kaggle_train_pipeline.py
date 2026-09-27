@@ -864,28 +864,49 @@ def run_pipeline(auto_train=True):
 
     # --- Step 4: Model Training ---
     if auto_train:
-        print("\n" + "=" * 60)
-        print("STEP 4: AUTOMATICALLY LAUNCHING MODEL TRAINING ON GPU...")
-        print("=" * 60)
+        print("\n" + "=" * 60, flush=True)
+        print("STEP 4: AUTOMATICALLY LAUNCHING MODEL TRAINING ON GPU...", flush=True)
+        print("=" * 60, flush=True)
+
+        repo_root = Path(__file__).resolve().parent.parent
+        src_path = str(repo_root / "src")
+
+        # Ensure oceanembed package is installed in editable mode
+        print("  Ensuring oceanembed package and dependencies are ready...", flush=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", str(repo_root), "--no-deps"], check=False)
+
+        # Ensure required training packages are installed
+        for pkg in ["omegaconf", "pytorch-lightning", "rich"]:
+            mod = pkg.replace("-", "_")
+            try:
+                __import__(mod)
+            except ImportError:
+                print(f"  Installing missing requirement: {pkg}...", flush=True)
+                subprocess.run([sys.executable, "-m", "pip", "install", "-q", pkg], check=False)
+
+        train_env = os.environ.copy()
+        existing_pp = train_env.get("PYTHONPATH", "")
+        train_env["PYTHONPATH"] = f"{src_path}:{existing_pp}" if existing_pp else src_path
+
         train_cmd = [
-            sys.executable, "scripts/train.py",
-            "--config", "configs/kaggle_25ch.yaml",
+            sys.executable, "-u", str(repo_root / "scripts" / "train.py"),
+            "--config", str(repo_root / "configs" / "kaggle_25ch.yaml"),
             "--no-wandb",
         ]
         try:
-            subprocess.run(train_cmd, check=True)
-            print("\n" + "=" * 60)
-            print("TRAINING FINISHED! SYNCING OUTPUTS TO GOOGLE DRIVE...")
-            print("=" * 60)
+            subprocess.run(train_cmd, env=train_env, check=True)
+            print("\n" + "=" * 60, flush=True)
+            print("TRAINING FINISHED! SYNCING OUTPUTS TO GOOGLE DRIVE...", flush=True)
+            print("=" * 60, flush=True)
             subprocess.run([
                 "rclone", "copy",
                 "/kaggle/working/outputs",
                 "gdrive:OceanEmbed/outputs",
                 "--progress"
             ], check=False)
-            print("Checkpoints safely backed up to Google Drive!")
+            print("Checkpoints safely backed up to Google Drive!", flush=True)
         except Exception as e:
-            print(f"Training run failed: {e}")
+            print(f"Training run failed: {e}", flush=True)
             return False
 
     return True
