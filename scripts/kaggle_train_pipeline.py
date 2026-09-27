@@ -59,17 +59,26 @@ def disk_free_gb():
     return (st.f_bavail * st.f_frsize) / (1024**3)
 
 
+CURRENT_CHANNEL_INDEX = None
+
+
 def sync_from_gdrive(folder):
-    """Sync a single folder from Google Drive to tmp_raw."""
+    """Sync a single folder from Google Drive to tmp_raw, reusing cache if present."""
     local = TMP_RAW / folder
     local.mkdir(parents=True, exist_ok=True)
-    print(f"  Syncing {folder} from GDrive... (Free disk: {disk_free_gb():.1f} GB)")
 
     # Protection: precip is 74 GB and exceeds the 20 GB Kaggle disk
     if folder == "precip":
         print("  [PROTECTION] 'precip' raw data is ~74 GB (exceeds Kaggle 20 GB disk). Skipping raw sync; using zero-fill placeholder.")
         return local
 
+    existing_files = [f for f in local.rglob("*") if f.is_file() and not f.name.startswith(".")]
+    if existing_files:
+        cached_mb = sum(f.stat().st_size for f in existing_files) / (1024**2)
+        print(f"  [CACHE] Using already downloaded raw data for {folder} ({len(existing_files)} files, {cached_mb:.1f} MB)")
+        return local
+
+    print(f"  Syncing {folder} from GDrive... (Free disk: {disk_free_gb():.1f} GB)")
     subprocess.run(
         ["rclone", "copy", f"{GDRIVE_BASE}/{folder}", str(local), "--progress"],
         check=False
@@ -79,12 +88,29 @@ def sync_from_gdrive(folder):
     return local
 
 
-def cleanup_raw(folder):
-    """Delete temporary raw data to free disk."""
-    path = TMP_RAW / folder
-    if path.exists():
-        shutil.rmtree(path)
-        print(f"  Cleaned up raw/{folder}/")
+def cleanup_raw(folder, force=False):
+    """Delete temporary raw data to free disk, retaining if an upcoming channel needs it."""
+    if not folder:
+        return
+    base = folder.split("/")[0] if "/" in folder else folder
+    path = TMP_RAW / base
+    if not path.exists():
+        return
+
+    # Check if upcoming channels in the pipeline still need this folder
+    global CURRENT_CHANNEL_INDEX
+    if not force and CURRENT_CHANNEL_INDEX is not None:
+        upcoming = CHANNEL_PIPELINE[CURRENT_CHANNEL_INDEX + 1:]
+        still_needed = any(
+            f is not None and (f == folder or f.startswith(base))
+            for _, _, f, _ in upcoming
+        )
+        if still_needed:
+            print(f"  [CACHE] Retaining raw/{base}/ for upcoming channel...")
+            return
+
+    shutil.rmtree(path)
+    print(f"  Cleaned up raw/{base}/ (Free disk: {disk_free_gb():.1f} GB)")
 
 
 def standardize_coords(ds):
@@ -531,8 +557,10 @@ def run_pipeline():
     success = 0
     failed = []
 
-    for ch_name, proc_type, folder, var_list in CHANNEL_PIPELINE:
-        print(f"\n--- Channel: {ch_name} (type={proc_type}) ---")
+    global CURRENT_CHANNEL_INDEX
+    for i, (ch_name, proc_type, folder, var_list) in enumerate(CHANNEL_PIPELINE):
+        CURRENT_CHANNEL_INDEX = i
+        print(f"\n--- Channel: {ch_name} (type={proc_type}) [{i+1}/{len(CHANNEL_PIPELINE)}] ---")
         print(f"    Disk free: {disk_free_gb():.1f} GB")
 
         try:
@@ -558,7 +586,7 @@ def run_pipeline():
             failed.append(ch_name)
             # Ensure cleanup even on error
             if folder:
-                cleanup_raw(folder.split("/")[0] if "/" in folder else folder)
+                cleanup_raw(folder.split("/")[0] if "/" in folder else folder, force=True)
 
     # --- Step 3: Create placeholders for failed channels ---
     if failed:
