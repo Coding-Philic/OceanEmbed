@@ -107,6 +107,19 @@ def main(args: argparse.Namespace) -> None:
     # ── Model ─────────────────────────────────────────────────────────
     lit_module = OceanEmbedLitModule(cfg)
 
+    print("\n" + "=" * 70, flush=True)
+    print("  OCEANEMBED 21-DATASET TRAINING SPECIFICATION", flush=True)
+    print("=" * 70, flush=True)
+    print(f"  • Raw Archive Origin : ~160 GB multi-source observations", flush=True)
+    print(f"  • Aligned Dataset Path: {cfg.data.aligned_dir} (10.68 GB dense tensors)", flush=True)
+    print(f"  • Physical Channels ({len(cfg.data.input_channels)}): {', '.join(cfg.data.input_channels)}", flush=True)
+    print(f"  • Coordinate Channels (4): lon_norm, lat_norm, sin_doy, cos_doy", flush=True)
+    print(f"  • Total Model In-Channels: {cfg.model.in_channels} (Encoder Stem accepts {lit_module.model.encoder.net[0].in_channels} channels)", flush=True)
+    print(f"  • Target Depths ({cfg.model.num_depths}): {cfg.data.depth_levels} m", flush=True)
+    print(f"  • Training Splits   : Train={cfg.data.train_years}, Val={cfg.data.val_years}, Test={cfg.data.test_years}", flush=True)
+    print(f"  • Model State       : Fresh initialisation from scratch (NO old weights)", flush=True)
+    print("=" * 70 + "\n", flush=True)
+
     # ── Logger ────────────────────────────────────────────────────────
     logger = WandbLogger(
         project = cfg.logging.project,
