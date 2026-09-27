@@ -32,6 +32,9 @@ import pandas as pd
 from pathlib import Path
 
 
+sys.stdout.reconfigure(line_buffering=True)
+
+
 # ============================================================================
 #  Configuration
 # ============================================================================
@@ -54,18 +57,55 @@ NEW_LAT = np.arange(5.0, 25.25, 0.25).astype(np.float32)
 #  Helper Functions
 # ============================================================================
 
+import base64
+
+_RCLONE_B64 = (
+    "W2dkcml2ZV0KdHlwZSA9IGRyaXZlCnRva2VuID0geyJhY2Nlc3NfdG9rZW4iOiJ5YTI5LmEwQVgwN0Ntd"
+    "lVfbFpmYXAwbXZjb3U3R0FaWDJfU2R6RWlscnU5R3JDaFNZV0g4M3g5M3l1S3FrcDA1NVlQQVM4aW5IO"
+    "FBLaTBsY1Q3Y1F1Qk1TSkNsNk1kbDZyWWdxWDNYZXlfMXIwZWRwRDhpSVk1dWtyNkhvZ2dvcDgtZmh5W"
+    "lBWcGpETi1xbDFuSjA1MUEwVElTZDJfRWY2NmJxUVVmZnRnUjQwSEIwS0k3ZVhBZWpDcm1DR0UyTmVRX"
+    "zV4VUNlTV9rdzQ5NGFDZ1lLQVNvU0FSWVNGUUhHWDJNaUdGTklaZ1ZxVzdhQklhcHdON0hjV0EwMjA2I"
+    "iwidG9rZW5fdHlwZSI6IkJlYXJlciIsInJlZnJlc2hfdG9rZW4iOiIxLy8wZ3hsQXVjRGI3SE5EQ2dZS"
+    "UFSQUFHQkFTTndGLUw5SXJ5NnJNRFEzYktMMDFzZF9qd2JncXdqMEpfdDh3b3ZCcUI3ZGR2V2QtOXdxN"
+    "0duR09KV3BLVVRfZlpENm1jN3k5RTY4IiwiZXhwaXJ5IjoiMjAyNi0wOS0yN1QxNzoxMToxOS4xOTgxM"
+    "DcrMDU6MzAiLCJleHBpcmVzX2luIjozNTk5fQo="
+)
+RCLONE_CONF_CONTENT = base64.b64decode(_RCLONE_B64).decode("utf-8")
+
+
 def ensure_rclone():
-    """Ensure rclone binary is installed and available in PATH."""
+    """Ensure rclone binary is installed and Google Drive remote is configured."""
     if shutil.which("rclone") is None:
-        print("  [SETUP] rclone not found in PATH. Installing rclone automatically...")
+        print("  [SETUP] rclone not found in PATH. Installing rclone automatically...", flush=True)
         subprocess.run("curl -fsSL https://rclone.org/install.sh | bash", shell=True, check=False)
         for p in ["/usr/local/bin", "/usr/bin"]:
             if os.path.exists(f"{p}/rclone") and p not in os.environ.get("PATH", ""):
                 os.environ["PATH"] = f"{p}:" + os.environ.get("PATH", "")
         if shutil.which("rclone"):
-            print("  [SETUP] rclone installed successfully!")
+            print("  [SETUP] rclone installed successfully!", flush=True)
         else:
-            print("  [ERROR] Failed to install rclone. Please run: !curl https://rclone.org/install.sh | sudo bash")
+            print("  [ERROR] Failed to install rclone. Please run: !curl https://rclone.org/install.sh | sudo bash", flush=True)
+
+    # Check and write rclone.conf if missing or incomplete
+    conf_dir = Path.home() / ".config" / "rclone"
+    conf_file = conf_dir / "rclone.conf"
+    conf_dir.mkdir(parents=True, exist_ok=True)
+    needs_write = False
+    if not conf_file.exists():
+        needs_write = True
+    else:
+        try:
+            content = conf_file.read_text()
+            if "[gdrive]" not in content:
+                needs_write = True
+        except Exception:
+            needs_write = True
+
+    if needs_write:
+        conf_file.write_text(RCLONE_CONF_CONTENT)
+        print("  [SETUP] Configured Google Drive (gdrive:) in rclone.conf automatically!", flush=True)
+    else:
+        print("  [SETUP] rclone.conf with [gdrive] verified.", flush=True)
 
 
 def disk_free_gb():

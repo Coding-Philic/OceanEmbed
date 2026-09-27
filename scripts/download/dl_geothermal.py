@@ -6,98 +6,122 @@ Run this script directly:
     python3 scripts/download/dl_geothermal.py
 
 What gets downloaded:
-    • Global Heat Flow Database from IHFC (International Heat Flow Commission)
-    • 1° resolution global grid
-    • Output → data/raw/geothermal/
-
-⚠️  Note: IHFC may require free registration.
-    If auto-download fails, get it manually from:
-    https://ihfc-iugg.org/products/global-heat-flow-database/
-
-No credentials needed for the main CSV download.
+    * Global Heat Flow Database from IHFC (International Heat Flow Commission)
+      hosted by GFZ Data Services (Helmholtz Centre Potsdam)
+    * Output -> data/raw/geothermal/IHFC_2023_GHFDB.CSV
+    * Automatically generates a gridded NetCDF file for ocean modeling
+      (data/raw/geothermal/geothermal_heatflow_grid.nc)
 """
 
-import subprocess, sys
-
-def pip_install(pkg):
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", pkg])
-
-for pkg in ["requests", "tqdm"]:
-    try:
-        __import__(pkg)
-    except ImportError:
-        print(f"📦  Installing {pkg} …")
-        pip_install(pkg)
-
-import requests
-from tqdm import tqdm
+import os
+import sys
+import subprocess
 from pathlib import Path
 
-OUTPUT_DIR = "data/raw/geothermal"
-# Primary: IHFC download page
-PRIMARY_URL = "https://ihfc-iugg.org/products/global-heat-flow-database/download/"
-# Fallback: Shapiro & Ritzwoller 2004 interpolated grid (widely used)
-FALLBACK_URL = (
-    "https://ds.iris.edu/files/products/emc/emc-files/"
-    "Shapiro.Ritzwoller-2004-GlobalHeatFlow-0.5x0.5deg.nc"
+OUTPUT_DIR = Path("data/raw/geothermal")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+IHFC_URL = (
+    "https://datapub.gfz.de/download/10.5880.FIDGEO.2023.008-VENOun/IHFC_2023_GHFDB.CSV"
 )
-OUT_FILE_PRIMARY  = Path(OUTPUT_DIR) / "global_heatflow_ihfc.csv"
-OUT_FILE_FALLBACK = Path(OUTPUT_DIR) / "shapiro_ritzwoller_heatflow.nc"
+CSV_FILE = OUTPUT_DIR / "IHFC_2023_GHFDB.CSV"
+NC_FILE = OUTPUT_DIR / "geothermal_heatflow_grid.nc"
 
-Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
-print("="*60)
-print("🌊  OceanEmbed v2 — Geothermal Heat Flux Download")
-print(f"   Primary source : IHFC Global Database")
-print(f"   Fallback source: Shapiro & Ritzwoller 2004 (IRIS)")
-print(f"   Output         : {OUTPUT_DIR}/")
-print("="*60)
-print()
+def download_csv():
+    print("=" * 60)
+    print("OceanEmbed - Geothermal Heat Flux Download")
+    print(f"Source : IHFC Global Heat Flow Database (GFZ Potsdam)")
+    print(f"Target : {CSV_FILE}")
+    print("=" * 60)
 
-def download_file(url, out_file, label):
-    print(f"  → Downloading {label} …")
+    if CSV_FILE.exists() and CSV_FILE.stat().st_size > 10_000_000:
+        print(f"[OK] IHFC CSV already exists: {CSV_FILE} ({CSV_FILE.stat().st_size / 1e6:.1f} MB)")
+        return True
+
+    print("Downloading IHFC CSV from GFZ Potsdam...")
+    # Try requests first
     try:
-        with requests.get(url, stream=True, timeout=60) as r:
+        import requests
+        with requests.get(IHFC_URL, stream=True, timeout=120) as r:
             r.raise_for_status()
-            total = int(r.headers.get("content-length", 0))
-            with open(out_file, "wb") as f, tqdm(
-                desc=label,
-                total=total,
-                unit="B",
-                unit_scale=True,
-                unit_divisor=1024,
-            ) as bar:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-                    bar.update(len(chunk))
+            with open(CSV_FILE, "wb") as f:
+                for chunk in r.iter_content(chunk_size=65536):
+                    if chunk:
+                        f.write(chunk)
+        print(f"[OK] Download complete -> {CSV_FILE} ({CSV_FILE.stat().st_size / 1e6:.1f} MB)")
         return True
     except Exception as e:
-        print(f"  ❌  Failed: {e}")
+        print(f"[WARN] Requests download failed: {e}. Trying curl...")
+
+    # Fallback to curl
+    try:
+        cmd = ["curl", "-L", "-o", str(CSV_FILE), IHFC_URL]
+        subprocess.run(cmd, check=True)
+        print(f"[OK] Curl download complete -> {CSV_FILE}")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Curl download failed: {e}")
         return False
 
-# Try primary
-if OUT_FILE_PRIMARY.exists():
-    print(f"  ✓ IHFC file already exists: {OUT_FILE_PRIMARY}")
-elif download_file(PRIMARY_URL, OUT_FILE_PRIMARY, "IHFC Heat Flow"):
-    print(f"\n✅  IHFC download complete → {OUT_FILE_PRIMARY.resolve()}")
-    sys.exit(0)
-else:
-    print()
-    print("  ⚠️  Primary (IHFC) failed. Trying fallback: Shapiro & Ritzwoller 2004 …")
-    print()
 
-# Try fallback
-if OUT_FILE_FALLBACK.exists():
-    print(f"  ✓ Fallback file already exists: {OUT_FILE_FALLBACK}")
-elif download_file(FALLBACK_URL, OUT_FILE_FALLBACK, "Shapiro-Ritzwoller Heatflow"):
-    print(f"\n✅  Fallback download complete → {OUT_FILE_FALLBACK.resolve()}")
-else:
-    print()
-    print("❌  Both downloads failed.")
-    print("   Manual download instructions:")
-    print("   1. Go to: https://ihfc-iugg.org/products/global-heat-flow-database/")
-    print("   2. Register (free) and download the dataset")
-    print(f"   3. Save file to: {Path(OUTPUT_DIR).resolve()}/")
-    sys.exit(1)
+def generate_gridded_netcdf():
+    """Converts the irregular IHFC heat flow observations into a regular 0.25 deg NetCDF grid."""
+    try:
+        import pandas as pd
+        import numpy as np
+        import xarray as xr
+    except ImportError:
+        print("[INFO] pandas/numpy/xarray not installed. Skipping NetCDF grid generation.")
+        print("      Raw CSV is available at: " + str(CSV_FILE))
+        return
 
-print(f"\n📁  Files saved to: {Path(OUTPUT_DIR).resolve()}")
+    print("Interpolating IHFC heat flow to Bay of Bengal & Indian Ocean grid (0.25 deg)...")
+    try:
+        df = pd.read_csv(CSV_FILE, sep=";", encoding="latin1", low_memory=False)
+        # Columns: q (heat flow in mW/m2), lat, lng
+        df["q"] = pd.to_numeric(df["q"], errors="coerce")
+        df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
+        df["lng"] = pd.to_numeric(df["lng"], errors="coerce")
+        clean = df.dropna(subset=["q", "lat", "lng"])
+
+        # Target grid: 5N to 25N, 75E to 100E
+        lats = np.arange(5.0, 25.25, 0.25)
+        lons = np.arange(75.0, 100.25, 0.25)
+        grid_lon, grid_lat = np.meshgrid(lons, lats)
+
+        from scipy.interpolate import griddata
+        points = clean[["lng", "lat"]].values
+        values = clean["q"].values
+
+        # Grid using linear then nearest to fill NaN
+        grid_q = griddata(points, values, (grid_lon, grid_lat), method="linear")
+        nan_mask = np.isnan(grid_q)
+        if np.any(nan_mask):
+            grid_q_near = griddata(points, values, (grid_lon, grid_lat), method="nearest")
+            grid_q[nan_mask] = grid_q_near[nan_mask]
+
+        ds = xr.Dataset(
+            data_vars={"heat_flow": (["latitude", "longitude"], grid_q.astype(np.float32))},
+            coords={"latitude": lats, "longitude": lons},
+            attrs={
+                "title": "OceanEmbed Geothermal Heat Flow (IHFC 2023)",
+                "source": "International Heat Flow Commission (GFZ Potsdam DOI 10.5880/fidgeo.2023.008)",
+                "units": "mW/m^2",
+            },
+        )
+        ds["heat_flow"].attrs["units"] = "mW/m^2"
+        ds["heat_flow"].attrs["long_name"] = "Surface Heat Flow"
+        ds.to_netcdf(NC_FILE)
+        print(f"[OK] Gridded NetCDF created -> {NC_FILE}")
+    except Exception as e:
+        print(f"[WARN] NetCDF grid generation encountered an error: {e}")
+
+
+if __name__ == "__main__":
+    success = download_csv()
+    if success:
+        generate_gridded_netcdf()
+        print("\nDataset 18 (Geothermal Heat Flow) ready.")
+    else:
+        sys.exit(1)

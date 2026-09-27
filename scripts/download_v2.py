@@ -390,31 +390,29 @@ def _download_geothermal(*, output_dir: str, dry_run: bool = False) -> bool:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
-    url      = "https://ihfc-iugg.org/products/global-heat-flow-database/download/"
-    out_file = out_path / "global_heatflow_2024.csv"
+    url      = "https://datapub.gfz.de/download/10.5880.FIDGEO.2023.008-VENOun/IHFC_2023_GHFDB.CSV"
+    out_file = out_path / "IHFC_2023_GHFDB.CSV"
 
     if out_file.exists():
-        print(_c(f"  ✓ Geothermal data already present: {out_file}", DIM))
+        print(_c(f"  [OK] Geothermal data already present: {out_file}", DIM))
         return True
 
     if dry_run:
-        print(_c(f"    [DRY RUN] Download geothermal CSV from IHFC → {out_file}", DIM))
+        print(_c(f"    [DRY RUN] Download geothermal CSV from IHFC -> {out_file}", DIM))
         return True
 
-    print("  → Downloading IHFC Global Heat Flow Database …")
-    print(_c("  ⚠  If auto-download fails, get it manually from:", YELLOW))
-    print(_c("     https://ihfc-iugg.org/products/global-heat-flow-database/", YELLOW))
+    print("  -> Downloading IHFC Global Heat Flow Database from GFZ Potsdam...")
 
     try:
-        with requests.get(url, stream=True, timeout=60) as r:
+        with requests.get(url, stream=True, timeout=120) as r:
             r.raise_for_status()
             with open(out_file, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
+                for chunk in r.iter_content(chunk_size=65536):
                     f.write(chunk)
-        print(_c(f"  ✅ Geothermal data saved → {out_file}", GREEN))
+        print(_c(f"  [OK] Geothermal data saved -> {out_file}", GREEN))
         return True
     except Exception as e:
-        print(_c(f"  ❌ Auto-download failed: {e}", RED))
+        print(_c(f"  [ERROR] Auto-download failed: {e}", RED))
         print(_c("     Download manually: https://ihfc-iugg.org", YELLOW))
         return False
 

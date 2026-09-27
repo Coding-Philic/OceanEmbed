@@ -1,158 +1,125 @@
 #!/usr/bin/env python3
 """
-Download: Ocean Heat Content 0-300m (OHC) — CMEMS GLORYS12
-============================================================
+Compute: Ocean Heat Content 0-300m (OHC) — CMEMS GLORYS12
+===========================================================
 Run this script directly:
     python3 scripts/download/dl_ohc.py
 
-What gets downloaded:
-    • Ocean Heat Content integrated 0–300 m  (J/m²)
-    • Computed on-the-fly from GLORYS12 thetao (sea water temperature)
-    • OR: downloaded directly from CMEMS if a dedicated OHC product exists
-    • Output → data/raw/ohc/
-
-Strategy:
-    GLORYS12 thetao (already in data/raw/glorys/) contains temperature at
-    every depth level. OHC is computed by integrating:
-        OHC = ρ × Cp × ∫₀³⁰⁰ T(z) dz
-    where ρ=1025 kg/m³, Cp=3985 J/(kg·K)
-
-    This script:
-    1. First tries to download the CMEMS dedicated OHC product directly
-    2. Falls back to computing OHC from already-downloaded GLORYS thetao
-
-Before first run:
-    Run once in terminal: copernicusmarine login
-    Also requires: pip install xarray scipy numpy
+What gets computed:
+    * Ocean Heat Content integrated 0–300 m (J/m^2)
+    * Computed from GLORYS12 potential temperature (thetao)
+    * Formula: OHC = rho * Cp * sum(thetao * dz) over 0-300m
+      where rho = 1025.0 kg/m^3, Cp = 3990.0 J/(kg*K)
+    * Also computes Tropical Cyclone Heat Potential (TCHP relative to 26 deg C)
+    * Output -> data/raw/ohc/ohc_<year>.nc
 """
 
-import subprocess, sys
-
-def pip_install(pkg):
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", pkg])
-
-try:
-    import copernicusmarine  # noqa: F401
-except ImportError:
-    print("📦  Installing copernicusmarine …")
-    pip_install("copernicusmarine")
-
-for pkg in ["xarray", "numpy", "scipy"]:
-    try:
-        __import__(pkg)
-    except ImportError:
-        print(f"📦  Installing {pkg} …")
-        pip_install(pkg)
-
+import os
+import sys
+import glob
 from pathlib import Path
 import numpy as np
 
-OUTPUT_DIR  = "data/raw/ohc"
-GLORYS_DIR  = "data/raw/glorys"
-
-LON_MIN, LON_MAX = 75.0, 100.0
-LAT_MIN, LAT_MAX = 5.0,  25.0
-START_DATE       = "2017-01-01"
-END_DATE         = "2023-12-31"
+OUTPUT_DIR = Path("data/raw/ohc")
+GLORYS_DIR = Path("data/raw/glorys")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Physical constants
-RHO_SW = 1025.0     # kg/m³ — sea water density
-CP_SW  = 3985.0     # J/(kg·K) — specific heat capacity of sea water
-OHC_DEPTH_MAX = 300 # m — integrate to 300 m
+RHO_SW = 1025.0       # kg/m^3 — sea water density
+CP_SW = 3990.0        # J/(kg*K) — specific heat capacity of seawater
+OHC_DEPTH_MAX = 300.0 # meters — integration limit
+T_REF = 26.0          # deg C — reference temperature for tropical cyclone heat potential
 
-Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
-print("="*60)
-print("🌊  OceanEmbed v2 — Ocean Heat Content (OHC) Download")
-print(f"   Depth    : 0 → {OHC_DEPTH_MAX} m (integrated)")
-print(f"   Region   : lon {LON_MIN}–{LON_MAX}  lat {LAT_MIN}–{LAT_MAX}")
-print(f"   Period   : {START_DATE} → {END_DATE}")
-print(f"   Output   : {OUTPUT_DIR}/")
-print("="*60)
-print()
+def compute_ohc():
+    try:
+        import xarray as xr
+    except ImportError:
+        print("[ERROR] xarray is required. Run: pip install xarray")
+        sys.exit(1)
 
-# ── Strategy 1: Try CMEMS direct OHC product ─────────────────────────────────
-print("  → Attempting CMEMS direct OHC download …")
-CMEMS_OHC_ID = "cmems_mod_glo_phy_myint_0.25deg_P1M-m"   # Monthly mean physics
+    print("=" * 60)
+    print("OceanEmbed - Ocean Heat Content (0-300m) Computation")
+    print(f"Source Directory : {GLORYS_DIR}/")
+    print(f"Output Directory : {OUTPUT_DIR}/")
+    print(f"Depth Limit      : 0 to {OHC_DEPTH_MAX} m")
+    print("=" * 60)
 
-try:
-    cmd = [
-        "copernicusmarine", "subset",
-        "--dataset-id",        CMEMS_OHC_ID,
-        "--variable",          "ohcvthermcline300",   # OHC 0-300m variable
-        "--minimum-longitude", str(LON_MIN),
-        "--maximum-longitude", str(LON_MAX),
-        "--minimum-latitude",  str(LAT_MIN),
-        "--maximum-latitude",  str(LAT_MAX),
-        "--start-datetime",    f"{START_DATE}T00:00:00",
-        "--end-datetime",      f"{END_DATE}T23:59:59",
-        "--output-directory",  OUTPUT_DIR,
-        "--force-download",
-        "--skip-existing",
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-    if result.returncode == 0:
-        print(f"  ✅ CMEMS OHC download complete → {OUTPUT_DIR}/")
-        sys.exit(0)
-    else:
-        print(f"  ⚠️  CMEMS direct OHC failed (dataset may not exist). Computing from GLORYS …")
-except Exception as e:
-    print(f"  ⚠️  CMEMS attempt failed: {e}. Computing from GLORYS …")
+    glorys_files = sorted(GLORYS_DIR.glob("*.nc"))
+    if not glorys_files:
+        print(f"[ERROR] No GLORYS NetCDF files found in {GLORYS_DIR}/")
+        print("Please ensure GLORYS files are present before computing OHC.")
+        sys.exit(1)
 
-# ── Strategy 2: Compute OHC from GLORYS thetao ───────────────────────────────
-print()
-print("  → Computing OHC from GLORYS12 thetao …")
-print(f"    Looking for GLORYS files in: {GLORYS_DIR}/")
-
-glorys_files = sorted(Path(GLORYS_DIR).glob("*.nc"))
-if not glorys_files:
-    print(f"  ❌  No GLORYS files found in {GLORYS_DIR}/")
-    print(f"      Run first: python3 scripts/download/dl_glorys.py")
-    sys.exit(1)
-
-try:
-    import xarray as xr
-
-    print(f"  Found {len(glorys_files)} GLORYS file(s). Processing …")
+    print(f"\nFound {len(glorys_files)} GLORYS file(s) to process.\n")
 
     for f in glorys_files:
-        out_file = Path(OUTPUT_DIR) / f"ohc_300m_{f.stem}.nc"
-        if out_file.exists():
-            print(f"  ⏭  Skipping {f.name} (already computed)")
-            continue
-
-        print(f"  → Computing OHC from {f.name} …")
-        ds = xr.open_dataset(f)
+        print(f"--- Processing {f.name} ---")
+        try:
+            ds = xr.open_dataset(f, chunks={"time": 100})
+        except Exception:
+            ds = xr.open_dataset(f)
 
         if "thetao" not in ds:
-            print(f"    ⚠️  No thetao in {f.name}, skipping.")
+            print(f"[WARN] 'thetao' variable not found in {f.name}, skipping.")
+            ds.close()
             continue
 
-        # Select depths 0 → 300 m
-        ds_300 = ds["thetao"].sel(depth=slice(0, OHC_DEPTH_MAX))
+        # Extract depths down to 300m
+        t300 = ds["thetao"].sel(depth=slice(0, OHC_DEPTH_MAX))
+        depths = t300.depth.values
+        dz = np.gradient(depths)
+        dz_da = xr.DataArray(dz, dims=["depth"], coords={"depth": t300.depth})
 
-        # OHC = ρ × Cp × ∫T dz  (trapezoid integration over depth)
-        depths = ds_300.depth.values
-        dz = np.gradient(depths)                           # layer thicknesses
+        # Total Ocean Heat Content (0 to 300m) in J/m^2
+        ohc_total = (RHO_SW * CP_SW * (t300 * dz_da)).sum(dim="depth")
+        ohc_total.name = "ohc_300m"
+        ohc_total.attrs["long_name"] = "Total Ocean Heat Content (0-300m)"
+        ohc_total.attrs["units"] = "J/m^2"
 
-        # Integrate: sum(T * dz) * RHO * CP
-        ohc = (ds_300 * xr.DataArray(dz, dims="depth")).sum(dim="depth") * RHO_SW * CP_SW
+        # Tropical Cyclone Heat Potential (TCHP relative to 26 deg C isotherm)
+        t_excess = (t300 - T_REF).clip(min=0)
+        tchp = (RHO_SW * CP_SW * (t_excess * dz_da)).sum(dim="depth")
+        tchp.name = "tchp_26c"
+        tchp.attrs["long_name"] = "Tropical Cyclone Heat Potential (T > 26 deg C)"
+        tchp.attrs["units"] = "kJ/cm^2"
 
-        ohc = ohc.rename("ohc_300m")
-        ohc.attrs["long_name"]  = f"Ocean Heat Content 0-{OHC_DEPTH_MAX}m"
-        ohc.attrs["units"]      = "J/m2"
-        ohc.attrs["formula"]    = f"rho={RHO_SW} kg/m3, Cp={CP_SW} J/(kg.K), integrated 0-{OHC_DEPTH_MAX}m"
+        # Create output dataset
+        ds_out = xr.Dataset(
+            data_vars={
+                "ohc_300m": ohc_total.astype(np.float32),
+                "tchp_26c": (tchp / 1e7).astype(np.float32),  # converted to standard kJ/cm^2
+            },
+            coords=ohc_total.coords,
+            attrs={
+                "title": "OceanEmbed Computed Ocean Heat Content (0-300m)",
+                "source": f"Computed from {f.name}",
+                "density": f"{RHO_SW} kg/m^3",
+                "specific_heat": f"{CP_SW} J/(kg*K)",
+            },
+        )
 
-        ohc.to_netcdf(out_file)
-        print(f"  ✅  {f.name} → {out_file.name}")
+        # Output filename
+        if "time" in ds and len(ds.time) > 0:
+            try:
+                first_year = str(ds.time.dt.year.values[0])
+                last_year = str(ds.time.dt.year.values[-1])
+                year_label = first_year if first_year == last_year else f"{first_year}_{last_year}"
+            except Exception:
+                year_label = f.stem
+        else:
+            year_label = f.stem
 
-    print()
-    print("✅  OHC computation complete!")
-    print(f"📁  Files saved to: {Path(OUTPUT_DIR).resolve()}")
+        out_file = OUTPUT_DIR / f"ohc_{year_label}.nc"
+        ds_out.to_netcdf(out_file)
+        size_mb = out_file.stat().st_size / (1024 * 1024)
+        print(f"[OK] Saved OHC dataset: {out_file} ({size_mb:.2f} MB)")
+        ds.close()
 
-except ImportError:
-    print("  ❌  xarray not installed. Run: pip install xarray")
-    sys.exit(1)
-except Exception as e:
-    print(f"  ❌  OHC computation failed: {e}")
-    sys.exit(1)
+    print("\n" + "=" * 60)
+    print("All OHC computations finished successfully.")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    compute_ohc()
