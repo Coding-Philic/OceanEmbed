@@ -54,6 +54,20 @@ NEW_LAT = np.arange(5.0, 25.25, 0.25).astype(np.float32)
 #  Helper Functions
 # ============================================================================
 
+def ensure_rclone():
+    """Ensure rclone binary is installed and available in PATH."""
+    if shutil.which("rclone") is None:
+        print("  [SETUP] rclone not found in PATH. Installing rclone automatically...")
+        subprocess.run("curl -fsSL https://rclone.org/install.sh | bash", shell=True, check=False)
+        for p in ["/usr/local/bin", "/usr/bin"]:
+            if os.path.exists(f"{p}/rclone") and p not in os.environ.get("PATH", ""):
+                os.environ["PATH"] = f"{p}:" + os.environ.get("PATH", "")
+        if shutil.which("rclone"):
+            print("  [SETUP] rclone installed successfully!")
+        else:
+            print("  [ERROR] Failed to install rclone. Please run: !curl https://rclone.org/install.sh | sudo bash")
+
+
 def disk_free_gb():
     """Return free disk space in GB."""
     st = os.statvfs("/kaggle/working")
@@ -719,6 +733,7 @@ CHANNEL_PIPELINE = [
 
 
 def run_pipeline(auto_train=True):
+    ensure_rclone()
     ALIGNED_DIR.mkdir(parents=True, exist_ok=True)
     (ALIGNED_DIR / "inputs").mkdir(exist_ok=True)
     (ALIGNED_DIR / "targets").mkdir(exist_ok=True)
