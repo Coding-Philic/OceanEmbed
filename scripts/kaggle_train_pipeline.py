@@ -116,7 +116,7 @@ def cleanup_raw(folder, force=False):
 
 def standardize_coords(ds):
     rename = {}
-    for old, new in [("longitude", "lon"), ("latitude", "lat")]:
+    for old, new in [("longitude", "lon"), ("latitude", "lat"), ("valid_time", "time")]:
         if old in ds.dims or old in ds.coords:
             rename[old] = new
     return ds.rename(rename) if rename else ds
@@ -343,7 +343,17 @@ def process_iod_channel(ref_times):
 def process_woa_channel(ch_name, subdir, var_candidates, ref_times):
     """WOA23 monthly climatology: select surface, repeat by month."""
     local = sync_from_gdrive(subdir)
-    files = sorted(glob.glob(str(local / "*.nc")))
+    all_files = sorted(glob.glob(str(local / "*.nc")))
+    if "temp" in ch_name:
+        files = [f for f in all_files if "_t" in Path(f).name]
+    elif "sal" in ch_name:
+        files = [f for f in all_files if "_s" in Path(f).name]
+    else:
+        files = all_files
+
+    if not files:
+        files = all_files
+
     if not files:
         print(f"  [SKIP] No files in {subdir}/")
         cleanup_raw(subdir)
@@ -525,8 +535,8 @@ CHANNEL_PIPELINE = [
     ("geothermal",  "static", "geothermal",  ["heat_flow", "heatflow", "z"]),
     # --- Climate / Climatology ---
     ("iod",      "iod",   None, None),
-    ("woa_temp", "woa",   "woa23/temperature", ["t_an", "t_mn"]),
-    ("woa_sal",  "woa",   "woa23/salinity",    ["s_an", "s_mn"]),
+    ("woa_temp", "woa",   "woa23", ["t_an", "t_mn"]),
+    ("woa_sal",  "woa",   "woa23", ["s_an", "s_mn"]),
 ]
 
 
