@@ -26,7 +26,7 @@ except ImportError:
     pip_install("copernicusmarine")
 
 # ── Config ────────────────────────────────────────────────────────────────────
-DATASET_ID  = "cmems_obs-sst_glo_phy_my_l4_P1D-m"
+DATASET_ID  = "METOFFICE-GLO-SST-L4-REP-OBS-SST"
 VARIABLE    = "analysed_sst"
 OUTPUT_DIR  = "data/raw/sst"
 

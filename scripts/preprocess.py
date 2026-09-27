@@ -7,8 +7,8 @@ from tqdm import tqdm
 import argparse
 from omegaconf import OmegaConf
 
-def preprocess(cfg):
-    raw_dir = Path("data/raw")
+def preprocess(cfg, raw_dir_arg=None):
+    raw_dir = Path(raw_dir_arg or cfg.data.get("raw_dir", "data/raw"))
     out_dir = Path(cfg.data.aligned_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "inputs").mkdir(exist_ok=True)
@@ -98,10 +98,11 @@ def preprocess(cfg):
             except Exception as e:
                 pass
                 
-    print("\n✅ Preprocessing completely finished! Data is aligned and ready for PyTorch.")
+    print("\nPreprocessing completely finished! Data is aligned and ready for PyTorch.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
+    parser.add_argument("--raw-dir", default=None, help="Optional path to raw data directory")
     args = parser.parse_args()
-    preprocess(OmegaConf.load(args.config))
+    preprocess(OmegaConf.load(args.config), raw_dir_arg=args.raw_dir)

@@ -1,0 +1,83 @@
+# === OceanEmbed Kaggle GPU Configuration ===
+# Bay of Bengal (75°E–100°E, 5°N–25°N)
+# 6 depth levels, 2017–2023
+
+# --- Data ---
+data:
+  aligned_dir: "/kaggle/working/data/aligned"
+  stats_file: "/kaggle/working/data/processed/normalization_stats.json"
+  mask_file: "/kaggle/working/data/processed/ocean_mask.nc"
+
+  # Spatial domain (Full Bay of Bengal matching downloaded data)
+  lon_range: [75.0, 100.0]
+  lat_range: [5.0, 25.0]
+
+  # Depth levels (meters)
+  depth_levels: [0, 50, 100, 150, 200, 500]
+
+  # Temporal splits (strict temporal holdout)
+  train_years: [2017, 2018, 2019, 2020, 2021]
+  val_years: [2022]
+  test_years: [2023]
+
+  # Input channels (4 satellite + 4 coordinate = 8 total)
+  input_channels:
+    - sst
+    - sla
+    - wind_u
+    - wind_v
+  num_input_channels: 8
+
+# --- Model ---
+model:
+  in_channels: 8
+  num_depths: 6
+  embed_dim: 256
+  num_heads: 8
+  num_decoder_layers: 4
+  dropout: 0.1
+
+# --- Loss ---
+loss:
+  lambda_grad: 0.1
+  lambda_steric: 0.05
+  lambda_corr: 0.1
+  thermocline_center: 150.0
+  thermocline_sigma: 75.0
+  depth_weight_base: 1.0
+  depth_weight_peak: 4.0
+  alpha_thermal: 2.1e-4
+
+# --- Training ---
+training:
+  batch_size: 16
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  max_epochs: 50
+  warmup_epochs: 5
+  min_lr: 1.0e-6
+  gradient_clip_val: 1.0
+  channel_dropout_p: 0.15
+  precision: "16-mixed"
+
+  scheduler_t0: 20
+  scheduler_t_mult: 2
+
+  save_top_k: 3
+  monitor: "val/total"
+  mode: "min"
+
+# --- Hardware ---
+hardware:
+  gpus: 1
+  num_workers: 4
+  accelerator: "gpu"
+  strategy: "auto"
+
+# --- Logging ---
+logging:
+  project: "oceanembed"
+  name: "kaggle-bob-v1"
+  log_every_n_steps: 25
+
+output_dir: "/kaggle/working/outputs"

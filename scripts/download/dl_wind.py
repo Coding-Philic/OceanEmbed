@@ -27,7 +27,7 @@ except ImportError:
 
 from pathlib import Path
 
-DATASET_ID  = "cmems_obs-wind_glo_phy_my_l4_0.125deg_P1D"
+DATASET_ID  = "cmems_obs-wind_glo_phy_my_l4_0.125deg_PT1H"
 VARIABLES   = ["eastward_wind", "northward_wind"]
 OUTPUT_DIR  = "data/raw/wind"
 

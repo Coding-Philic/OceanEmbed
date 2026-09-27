@@ -1,0 +1,141 @@
+# === OceanEmbed Full 25-Dataset Kaggle Training Config ===
+# Bay of Bengal (75-100E, 5-25N), 6 depth levels, 2017-2023
+# Uses ALL 25 downloaded datasets as input channels + targets
+
+# --- Data ---
+data:
+  aligned_dir: "/kaggle/working/aligned"
+  stats_file: "/kaggle/working/processed/normalization_stats.json"
+  mask_file: "/kaggle/working/processed/ocean_mask.nc"
+  raw_dir: "/kaggle/working/raw"
+
+  # Spatial domain
+  lon_range: [75.0, 100.0]
+  lat_range: [5.0, 25.0]
+
+  # Depth levels (meters)
+  depth_levels: [0, 50, 100, 150, 200, 500]
+
+  # Temporal splits (strict temporal holdout)
+  train_years: [2017, 2018, 2019, 2020, 2021]
+  val_years: [2022]
+  test_years: [2023]
+
+  # ---- Input Channels (21 satellite/auxiliary + 4 coordinate = 25 total) ----
+  #
+  # Satellite Surface Observations:
+  #   D1  sst           Sea Surface Temperature (OSTIA L4)
+  #   D2  sla           Sea Level Anomaly (DUACS L4)
+  #   D3  wind_u        10m Eastward Wind (CERSAT blended)
+  #   D4  wind_v        10m Northward Wind (CERSAT blended)
+  #   D6  cur_u         Surface Current U (Multi-Obs L4)
+  #   D6  cur_v         Surface Current V (Multi-Obs L4)
+  #   D7  chl           Chlorophyll-a (OC L4 gap-free)
+  #   D8  kd490         Diffuse Attenuation Kd490 (OC L4)
+  #   D9  sss           Sea Surface Salinity (Multi-Obs L4)
+  #
+  # Atmospheric Forcing (ERA5):
+  #   D11 solar_rad     Net Solar Radiation (W/m2)
+  #   D12 thermal_rad   Net Thermal Radiation (W/m2)
+  #   D13 latent_heat   Latent Heat Flux (W/m2)
+  #   D14 sensible_heat Sensible Heat Flux (W/m2)
+  #   D15 slp           Sea Level Pressure (Pa)
+  #
+  # Auxiliary Dynamic:
+  #   D10 precip        Precipitation (GPM IMERG, mm/hr)
+  #   D16 river         River Discharge (GloFAS, m3/s)
+  #
+  # Static Fields:
+  #   D17 bathymetry    Ocean Depth (GEBCO, m)
+  #   D18 geothermal    Geothermal Heat Flow (mW/m2)
+  #
+  # Climate Indices & Climatology:
+  #   D22 iod           Indian Ocean Dipole Index (scalar)
+  #   D19 woa_temp      WOA23 Surface Temp Climatology (degC)
+  #   D20 woa_sal       WOA23 Surface Sal Climatology (PSU)
+  #
+  # Auto-generated coordinate encoding (4 channels):
+  #   lon_norm, lat_norm, sin_doy, cos_doy
+  #
+  # Target (D5 GLORYS): thetao at 6 depth levels
+  # Validation only (D21 Argo, D24 MODIS SST): not used in training
+  # Derived from target (D23 MLD, D25 OHC): not used as inputs
+  #
+  input_channels:
+    - sst
+    - sla
+    - wind_u
+    - wind_v
+    - cur_u
+    - cur_v
+    - chl
+    - kd490
+    - sss
+    - solar_rad
+    - thermal_rad
+    - latent_heat
+    - sensible_heat
+    - slp
+    - precip
+    - river
+    - bathymetry
+    - geothermal
+    - iod
+    - woa_temp
+    - woa_sal
+  num_input_channels: 25   # 21 above + 4 coordinate channels
+
+# --- Model ---
+model:
+  in_channels: 25          # must match num_input_channels
+  num_depths: 6
+  embed_dim: 256
+  num_heads: 8
+  num_decoder_layers: 4
+  dropout: 0.1
+
+# --- Loss ---
+loss:
+  lambda_grad: 0.1
+  lambda_steric: 0.05
+  lambda_corr: 0.1
+  thermocline_center: 150.0
+  thermocline_sigma: 75.0
+  depth_weight_base: 1.0
+  depth_weight_peak: 4.0
+  alpha_thermal: 2.1e-4
+
+# --- Training ---
+training:
+  batch_size: 16
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  max_epochs: 50
+  warmup_epochs: 5
+  min_lr: 1.0e-6
+  gradient_clip_val: 1.0
+  channel_dropout_p: 0.15
+  precision: "16-mixed"
+  early_stopping_patience: 10
+
+  scheduler_t0: 20
+  scheduler_t_mult: 2
+
+  save_top_k: 3
+  monitor: "val/total"
+  mode: "min"
+
+# --- Hardware ---
+hardware:
+  gpus: 1
+  num_workers: 4
+  accelerator: "gpu"
+  strategy: "auto"
+
+# --- Logging ---
+logging:
+  project: "oceanembed"
+  name: "kaggle-25ch-v1"
+  log_every_n_steps: 25
+
+output_dir: "/kaggle/working/outputs"
