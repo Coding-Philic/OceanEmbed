@@ -114,11 +114,43 @@ def cleanup_raw(folder, force=False):
     print(f"  Cleaned up raw/{base}/ (Free disk: {disk_free_gb():.1f} GB)")
 
 
+# Real channels already confirmed aligned from previous run
+VERIFIED_REAL_CHANNELS = {
+    "sst", "sla", "wind_u", "wind_v", "cur_u", "cur_v",
+    "chl", "kd490", "sss", "bathymetry", "geothermal"
+}
+
+
+def is_channel_already_aligned(ch_name):
+    """Check if all years are already aligned with real data (>1 KB)."""
+    if ch_name not in VERIFIED_REAL_CHANNELS:
+        return False
+    for year in YEARS:
+        p = ALIGNED_DIR / "inputs" / f"{ch_name}_{year}.nc"
+        if not p.exists() or p.stat().st_size < 1000:
+            return False
+    return True
+
+
 def standardize_coords(ds):
+    # If valid_time is a dimension, promote it to 'time'
+    if "valid_time" in ds.dims:
+        if "time" in ds.coords or "time" in ds.dims:
+            ds = ds.drop_vars(["time"], errors="ignore")
+        ds = ds.rename({"valid_time": "time"})
+
     rename = {}
-    for old, new in [("longitude", "lon"), ("latitude", "lat"), ("valid_time", "time")]:
+    for old in ["longitude", "long"]:
         if old in ds.dims or old in ds.coords:
-            rename[old] = new
+            rename[old] = "lon"
+    for old in ["latitude"]:
+        if old in ds.dims or old in ds.coords:
+            rename[old] = "lat"
+    if "time" not in ds.dims and "time" not in ds.coords:
+        for old in ["valid_time", "date"]:
+            if old in ds.dims or old in ds.coords:
+                rename[old] = "time"
+                break
     return ds.rename(rename) if rename else ds
 
 
@@ -142,7 +174,7 @@ def regrid(da, lon_range=LON_RANGE, lat_range=LAT_RANGE):
 
 def save_channel_year(ch_name, da_year, year):
     out = ALIGNED_DIR / "inputs" / f"{ch_name}_{year}.nc"
-    da_year.to_dataset(name=ch_name).to_netcdf(out)
+    da_year.to_dataset(name=ch_name).to_netcdf(out, mode="w")
 
 
 # ============================================================================
@@ -151,6 +183,10 @@ def save_channel_year(ch_name, da_year, year):
 
 def process_copernicus_channel(ch_name, gdrive_folder, var_candidates):
     """Copernicus Marine single-file channels (SST, SLA, Wind, Currents, CHL, etc.)"""
+    if is_channel_already_aligned(ch_name):
+        print(f"  [CACHE] {ch_name}: Already aligned for all {len(YEARS)} years. Skipping.")
+        return True
+
     local = sync_from_gdrive(gdrive_folder)
     files = sorted(glob.glob(str(local / "*.nc")))
     if not files:
@@ -186,16 +222,23 @@ def process_copernicus_channel(ch_name, gdrive_folder, var_candidates):
 
         ds.close()
         print(f"  [OK] {ch_name}: {saved} years aligned")
+        cleanup_raw(gdrive_folder)
+        if saved > 0:
+            VERIFIED_REAL_CHANNELS.add(ch_name)
+            return True
+        return False
     except Exception as e:
         print(f"  [ERROR] {ch_name}: {e}")
-        saved = 0
-
-    cleanup_raw(gdrive_folder)
-    return saved > 0
+        cleanup_raw(gdrive_folder)
+        return False
 
 
 def process_era5_channel(ch_name, gdrive_folder, var_candidates):
     """ERA5 yearly NetCDF files (heatflux, SLP, GloFAS)."""
+    if is_channel_already_aligned(ch_name):
+        print(f"  [CACHE] {ch_name}: Already aligned for all {len(YEARS)} years. Skipping.")
+        return True
+
     local = sync_from_gdrive(gdrive_folder)
     files = sorted(glob.glob(str(local / "*.nc")))
     if not files:
@@ -203,7 +246,7 @@ def process_era5_channel(ch_name, gdrive_folder, var_candidates):
         cleanup_raw(gdrive_folder)
         return False
 
-    saved = 0
+    saved_years = set()
     for f in files:
         try:
             ds = xr.open_dataset(f)
@@ -218,30 +261,33 @@ def process_era5_channel(ch_name, gdrive_folder, var_candidates):
                 da = da.isel(depth=0)
 
             for year in YEARS:
-                out = ALIGNED_DIR / "inputs" / f"{ch_name}_{year}.nc"
-                if out.exists():
-                    saved += 1
-                    continue
                 try:
                     da_y = da.sel(time=str(year))
                     if len(da_y.time) == 0:
                         continue
                     da_y = regrid(da_y.load())
                     save_channel_year(ch_name, da_y, year)
-                    saved += 1
+                    saved_years.add(year)
                 except (KeyError, ValueError):
                     continue
             ds.close()
         except Exception as e:
             print(f"  [WARNING] {ch_name} file {Path(f).name}: {e}")
 
-    print(f"  [OK] {ch_name}: {saved} year-files")
+    print(f"  [OK] {ch_name}: {len(saved_years)} years aligned from real data")
     cleanup_raw(gdrive_folder)
-    return saved > 0
+    if len(saved_years) > 0:
+        VERIFIED_REAL_CHANNELS.add(ch_name)
+        return True
+    return False
 
 
 def process_static_channel(ch_name, gdrive_folder, var_candidates, ref_times):
     """Static fields (bathymetry, geothermal) replicated across time."""
+    if is_channel_already_aligned(ch_name):
+        print(f"  [CACHE] {ch_name}: Already aligned for all {len(YEARS)} years. Skipping.")
+        return True
+
     local = sync_from_gdrive(gdrive_folder)
     files = sorted(glob.glob(str(local / "*.nc")))
     if not files:
@@ -281,36 +327,77 @@ def process_static_channel(ch_name, gdrive_folder, var_candidates, ref_times):
                 coords={"time": times, "lat": NEW_LAT, "lon": NEW_LON},
             )
             out = ALIGNED_DIR / "inputs" / f"{ch_name}_{year}.nc"
-            ds_out.to_netcdf(out)
+            ds_out.to_netcdf(out, mode="w")
             saved += 1
 
         print(f"  [OK] {ch_name}: static replicated for {saved} years")
+        cleanup_raw(gdrive_folder)
+        if saved > 0:
+            VERIFIED_REAL_CHANNELS.add(ch_name)
+            return True
+        return False
     except Exception as e:
         print(f"  [ERROR] {ch_name}: {e}")
-        saved = 0
-
-    cleanup_raw(gdrive_folder)
-    return saved > 0
+        cleanup_raw(gdrive_folder)
+        return False
 
 
 def process_iod_channel(ref_times):
     """IOD index: CSV scalar broadcast to spatial grid."""
+    if is_channel_already_aligned("iod"):
+        print(f"  [CACHE] iod: Already aligned for all {len(YEARS)} years. Skipping.")
+        return True
+
     local = sync_from_gdrive("iod")
-    csvs = sorted(glob.glob(str(local / "*.csv")))
-    if not csvs:
-        print("  [SKIP] No IOD CSV files")
+    series = None
+
+    # Option 1: check local CSVs downloaded from GDrive
+    csvs = sorted(glob.glob(str(local / "*.csv"))) + sorted(glob.glob(str(local / "*.txt")))
+    for csv_file in csvs:
+        try:
+            df = pd.read_csv(csv_file)
+            cols = list(df.columns)
+            date_col = next((c for c in cols if "date" in c.lower() or "time" in c.lower()), cols[0])
+            val_col = next((c for c in cols if any(k in c.lower() for k in ["dmi", "iod", "val", "index"])), cols[-1])
+            df["date"] = pd.to_datetime(df[date_col])
+            series = df.set_index("date")[val_col].astype(float)
+            print(f"  [OK] Loaded IOD series from {Path(csv_file).name}")
+            break
+        except Exception:
+            continue
+
+    # Option 2: fetch live from NOAA PSL if GDrive doesn't have it
+    if series is None:
+        try:
+            import urllib.request
+            url = "https://psl.noaa.gov/gcos_wgsp/Timeseries/Data/dmi.had.long.data"
+            with urllib.request.urlopen(url, timeout=15) as resp:
+                text = resp.read().decode("utf-8")
+            rows = []
+            for line in text.strip().splitlines()[1:]:
+                parts = line.split()
+                if len(parts) == 13:
+                    try:
+                        y = int(parts[0])
+                        for m, v in enumerate(parts[1:], start=1):
+                            val = float(v)
+                            if val > -99:
+                                rows.append({"date": pd.Timestamp(year=y, month=m, day=1), "dmi": val})
+                    except ValueError:
+                        continue
+            if rows:
+                df = pd.DataFrame(rows).set_index("date")
+                series = df["dmi"].astype(float)
+                print(f"  [OK] Downloaded IOD series directly from NOAA PSL ({len(series)} records)")
+        except Exception as e:
+            print(f"  [WARNING] Direct NOAA PSL fetch failed: {e}")
+
+    if series is None:
+        print("  [SKIP] Could not load IOD series")
         cleanup_raw("iod")
         return False
 
     try:
-        df = pd.read_csv(csvs[0])
-        cols = list(df.columns)
-        date_col = cols[0]
-        val_col = cols[1] if len(cols) >= 2 else cols[0]
-        df["date"] = pd.to_datetime(df[date_col])
-        df = df.set_index("date").sort_index()
-        series = df[val_col].astype(float)
-
         H, W = len(NEW_LAT), len(NEW_LON)
         saved = 0
         for year in YEARS:
@@ -328,20 +415,28 @@ def process_iod_channel(ref_times):
                 {"iod": (["time", "lat", "lon"], data)},
                 coords={"time": times, "lat": NEW_LAT, "lon": NEW_LON},
             )
-            (ALIGNED_DIR / "inputs" / f"iod_{year}.nc").pipe(lambda p: ds_out.to_netcdf(p))
+            out = ALIGNED_DIR / "inputs" / f"iod_{year}.nc"
+            ds_out.to_netcdf(out, mode="w")
             saved += 1
 
         print(f"  [OK] iod: broadcast for {saved} years")
+        cleanup_raw("iod")
+        if saved > 0:
+            VERIFIED_REAL_CHANNELS.add("iod")
+            return True
+        return False
     except Exception as e:
         print(f"  [ERROR] iod: {e}")
-        saved = 0
-
-    cleanup_raw("iod")
-    return saved > 0
+        cleanup_raw("iod")
+        return False
 
 
 def process_woa_channel(ch_name, subdir, var_candidates, ref_times):
     """WOA23 monthly climatology: select surface, repeat by month."""
+    if is_channel_already_aligned(ch_name):
+        print(f"  [CACHE] {ch_name}: Already aligned for all {len(YEARS)} years. Skipping.")
+        return True
+
     local = sync_from_gdrive(subdir)
     all_files = sorted(glob.glob(str(local / "*.nc")))
     if "temp" in ch_name:
@@ -352,37 +447,33 @@ def process_woa_channel(ch_name, subdir, var_candidates, ref_times):
         files = all_files
 
     if not files:
-        files = all_files
-
-    if not files:
-        print(f"  [SKIP] No files in {subdir}/")
+        print(f"  [SKIP] No matching files for {ch_name} in {subdir}/")
         cleanup_raw(subdir)
         return False
 
     try:
-        ds = xr.open_mfdataset(files, combine="by_coords")
-        ds = standardize_coords(ds)
-        var = find_var(ds, var_candidates)
-        if not var:
+        monthly_grids = []
+        for f in files:
+            ds = xr.open_dataset(f, decode_times=False)
+            ds = standardize_coords(ds)
+            var = find_var(ds, var_candidates)
+            if not var:
+                ds.close()
+                continue
+
+            da = ds[var]
+            if "depth" in da.dims:
+                da = da.isel(depth=0)
+            if "time" in da.dims:
+                da = da.isel(time=0)
+
+            monthly_grids.append(regrid(da.load()).values.astype(np.float32))
             ds.close()
+
+        if not monthly_grids:
+            print(f"  [SKIP] {ch_name}: could not extract variable from files")
             cleanup_raw(subdir)
             return False
-
-        da = ds[var]
-        if "depth" in da.dims:
-            da = da.isel(depth=0)
-        da = da.load()
-
-        # Get monthly regridded values
-        monthly = []
-        n_time = len(da.time) if "time" in da.dims else 1
-        for m in range(min(n_time, 12)):
-            if "time" in da.dims:
-                sl = da.isel(time=m)
-            else:
-                sl = da
-            monthly.append(regrid(sl).values.astype(np.float32))
-        ds.close()
 
         H, W = len(NEW_LAT), len(NEW_LON)
         saved = 0
@@ -393,22 +484,26 @@ def process_woa_channel(ch_name, subdir, var_candidates, ref_times):
             data = np.zeros((len(times), H, W), dtype=np.float32)
             for i, t in enumerate(times):
                 tp = pd.Timestamp(t.values) if hasattr(t, "values") else pd.Timestamp(t)
-                mi = (tp.month - 1) % len(monthly)
-                data[i] = monthly[mi]
+                mi = (tp.month - 1) % len(monthly_grids)
+                data[i] = monthly_grids[mi]
             ds_out = xr.Dataset(
                 {ch_name: (["time", "lat", "lon"], data)},
                 coords={"time": times, "lat": NEW_LAT, "lon": NEW_LON},
             )
-            (ALIGNED_DIR / "inputs" / f"{ch_name}_{year}.nc").pipe(lambda p: ds_out.to_netcdf(p))
+            out = ALIGNED_DIR / "inputs" / f"{ch_name}_{year}.nc"
+            ds_out.to_netcdf(out, mode="w")
             saved += 1
 
-        print(f"  [OK] {ch_name}: climatology for {saved} years")
+        print(f"  [OK] {ch_name}: climatology aligned for {saved} years")
+        cleanup_raw(subdir)
+        if saved > 0:
+            VERIFIED_REAL_CHANNELS.add(ch_name)
+            return True
+        return False
     except Exception as e:
         print(f"  [ERROR] {ch_name}: {e}")
-        saved = 0
-
-    cleanup_raw(subdir)
-    return saved > 0
+        cleanup_raw(subdir)
+        return False
 
 
 def process_glorys_target():
@@ -502,7 +597,7 @@ def create_placeholder(ch_name, ref_times):
             {ch_name: (["time", "lat", "lon"], data)},
             coords={"time": times, "lat": NEW_LAT, "lon": NEW_LON},
         )
-        ds.to_netcdf(ALIGNED_DIR / "inputs" / f"{ch_name}_{year}.nc")
+        ds.to_netcdf(ALIGNED_DIR / "inputs" / f"{ch_name}_{year}.nc", mode="w")
 
 
 # ============================================================================
