@@ -22,6 +22,7 @@ import os
 import sys
 import glob
 import shutil
+import argparse
 import subprocess
 import traceback
 
@@ -529,7 +530,7 @@ CHANNEL_PIPELINE = [
 ]
 
 
-def run_pipeline():
+def run_pipeline(auto_train=True):
     ALIGNED_DIR.mkdir(parents=True, exist_ok=True)
     (ALIGNED_DIR / "inputs").mkdir(exist_ok=True)
     (ALIGNED_DIR / "targets").mkdir(exist_ok=True)
@@ -542,6 +543,7 @@ def run_pipeline():
     print(f"  Grid: {len(NEW_LON)} x {len(NEW_LAT)} (0.25 deg)")
     print(f"  Years: {YEARS}")
     print(f"  Channels: {len(CHANNEL_PIPELINE)}")
+    print(f"  Auto Train: {auto_train}")
     print("=" * 60)
 
     # --- Step 1: GLORYS target (largest file, process first) ---
@@ -612,8 +614,38 @@ def run_pipeline():
     print(f"  Aligned data size: {aligned_size:.2f} GB")
     print(f"  Free disk: {disk_free_gb():.1f} GB")
     print("=" * 60)
+
+    # --- Step 4: Model Training ---
+    if auto_train:
+        print("\n" + "=" * 60)
+        print("STEP 4: AUTOMATICALLY LAUNCHING MODEL TRAINING ON GPU...")
+        print("=" * 60)
+        train_cmd = [
+            sys.executable, "scripts/train.py",
+            "--config", "configs/kaggle_25ch.yaml",
+            "--no-wandb",
+        ]
+        try:
+            subprocess.run(train_cmd, check=True)
+            print("\n" + "=" * 60)
+            print("TRAINING FINISHED! SYNCING OUTPUTS TO GOOGLE DRIVE...")
+            print("=" * 60)
+            subprocess.run([
+                "rclone", "copy",
+                "/kaggle/working/outputs",
+                "gdrive:OceanEmbed/outputs",
+                "--progress"
+            ], check=False)
+            print("Checkpoints safely backed up to Google Drive!")
+        except Exception as e:
+            print(f"Training run failed: {e}")
+            return False
+
     return True
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    parser = argparse.ArgumentParser(description="OceanEmbed Kaggle Pipeline")
+    parser.add_argument("--preprocess-only", action="store_true", help="Only run preprocessing without starting training")
+    args = parser.parse_args()
+    run_pipeline(auto_train=not args.preprocess_only)
