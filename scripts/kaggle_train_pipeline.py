@@ -64,6 +64,12 @@ def sync_from_gdrive(folder):
     local = TMP_RAW / folder
     local.mkdir(parents=True, exist_ok=True)
     print(f"  Syncing {folder} from GDrive... (Free disk: {disk_free_gb():.1f} GB)")
+
+    # Protection: precip is 74 GB and exceeds the 20 GB Kaggle disk
+    if folder == "precip":
+        print("  [PROTECTION] 'precip' raw data is ~74 GB (exceeds Kaggle 20 GB disk). Skipping raw sync; using zero-fill placeholder.")
+        return local
+
     subprocess.run(
         ["rclone", "copy", f"{GDRIVE_BASE}/{folder}", str(local), "--progress"],
         check=False
@@ -369,53 +375,79 @@ def process_woa_channel(ch_name, subdir, var_candidates, ref_times):
 
 
 def process_glorys_target():
-    """Process GLORYS target (thetao at depth levels). Returns ref_times dict."""
-    local = sync_from_gdrive("glorys")
-    files = sorted(glob.glob(str(local / "*.nc")))
-    if not files:
-        print("FATAL: No GLORYS files found!")
-        cleanup_raw("glorys")
-        return {}
-
+    """Process GLORYS target (thetao at depth levels) ONE YEAR AT A TIME.
+    
+    GLORYS total is ~27 GB (3.85 GB / year). Kaggle has ~20 GB free disk.
+    Downloading and processing one year at a time keeps peak disk usage under 4.5 GB.
+    """
     ref_times = {}
-    try:
-        ds = xr.open_mfdataset(files, combine="by_coords", chunks={"time": 30})
-        ds = standardize_coords(ds)
-        var = find_var(ds, ["thetao", "votemper", "temperature"])
-        if not var:
-            print("FATAL: No temperature variable in GLORYS")
-            ds.close()
-            cleanup_raw("glorys")
-            return {}
+    local_dir = TMP_RAW / "glorys"
+    local_dir.mkdir(parents=True, exist_ok=True)
 
-        da = ds[var]
-        da = da.sel(
-            lon=slice(LON_RANGE[0] - 1, LON_RANGE[1] + 1),
-            lat=slice(LAT_RANGE[0] - 1, LAT_RANGE[1] + 1),
-        )
-        if "depth" in da.dims:
-            da = da.sel(depth=DEPTH_LEVELS, method="nearest")
+    for year in YEARS:
+        filename = f"glorys_{year}.nc"
+        out_target = ALIGNED_DIR / "targets" / f"glorys_temp_{year}.nc"
 
-        for year in YEARS:
+        if out_target.exists() and out_target.stat().st_size > 1000:
+            print(f"  -> GLORYS {year} already aligned. Skipping.")
             try:
-                da_y = da.sel(time=str(year))
-                if len(da_y.time) == 0:
-                    continue
-                da_y = da_y.load()
-                if da_y.lat.values[0] > da_y.lat.values[-1]:
-                    da_y = da_y.sortby("lat")
-                da_y = da_y.interp(lon=NEW_LON, lat=NEW_LAT, method="linear")
-                out = ALIGNED_DIR / "targets" / f"glorys_temp_{year}.nc"
-                da_y.to_dataset(name="thetao").to_netcdf(out)
-                ref_times[year] = da_y.time.values
-                print(f"  -> GLORYS {year}: {len(da_y.time)} days")
-            except Exception as e:
-                print(f"  -> Skip GLORYS {year}: {e}")
+                ds = xr.open_dataset(out_target)
+                ref_times[year] = ds.time.values
+                ds.close()
+            except Exception:
+                pass
+            continue
 
-        ds.close()
-    except Exception as e:
-        print(f"FATAL ERROR processing GLORYS: {e}")
-        traceback.print_exc()
+        print(f"\n  --- Syncing GLORYS {year} from GDrive (Free disk: {disk_free_gb():.1f} GB) ---")
+        local_file = local_dir / filename
+
+        # Download ONLY this single year file (3.85 GB)
+        subprocess.run(
+            ["rclone", "copy", f"{GDRIVE_BASE}/glorys/{filename}", str(local_dir), "--progress"],
+            check=False
+        )
+
+        if not local_file.exists():
+            print(f"  [WARNING] GLORYS {filename} not found after download")
+            continue
+
+        try:
+            print(f"  Processing {filename} ({local_file.stat().st_size / (1024**2):.1f} MB)...")
+            ds = xr.open_dataset(local_file)
+            ds = standardize_coords(ds)
+            var = find_var(ds, ["thetao", "votemper", "temperature"])
+            if not var:
+                print(f"  [ERROR] No temperature variable in {filename}")
+                ds.close()
+                continue
+
+            da = ds[var]
+            da = da.sel(
+                lon=slice(LON_RANGE[0] - 1, LON_RANGE[1] + 1),
+                lat=slice(LAT_RANGE[0] - 1, LAT_RANGE[1] + 1),
+            )
+            if "depth" in da.dims:
+                da = da.sel(depth=DEPTH_LEVELS, method="nearest")
+
+            da_y = da.load()
+            ds.close()
+
+            if len(da_y.lat) > 1 and da_y.lat.values[0] > da_y.lat.values[-1]:
+                da_y = da_y.sortby("lat")
+            da_y = da_y.interp(lon=NEW_LON, lat=NEW_LAT, method="linear")
+
+            da_y.to_dataset(name="thetao").to_netcdf(out_target)
+            ref_times[year] = da_y.time.values
+            out_mb = out_target.stat().st_size / (1024**2)
+            print(f"  -> GLORYS {year}: {len(da_y.time)} days aligned and saved ({out_mb:.1f} MB)")
+        except Exception as e:
+            print(f"  [ERROR] GLORYS {year}: {e}")
+            traceback.print_exc()
+        finally:
+            # IMMEDIATELY delete the raw file to free disk before the next year!
+            if local_file.exists():
+                local_file.unlink()
+                print(f"  Cleaned up raw {filename}. Free disk: {disk_free_gb():.1f} GB")
 
     cleanup_raw("glorys")
     return ref_times
