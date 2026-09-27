@@ -89,9 +89,9 @@ data:
 model:
   in_channels: 25          # must match num_input_channels
   num_depths: 6
-  embed_dim: 256
-  num_heads: 8
-  num_decoder_layers: 4
+  embed_dim: 512           # Scaled from 256 -> 512 for 38.0M parameters
+  num_heads: 16            # Scaled from 8 -> 16 (32 dim per head)
+  num_decoder_layers: 8    # Scaled from 4 -> 8 (deep cross-depth attention)
   dropout: 0.1
 
 # --- Loss ---
