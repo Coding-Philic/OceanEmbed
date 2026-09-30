@@ -782,7 +782,7 @@ CHANNEL_PIPELINE = [
 ]
 
 
-def run_pipeline(auto_train=True):
+def run_pipeline(auto_train=True, fresh=False):
     ensure_rclone()
     ALIGNED_DIR.mkdir(parents=True, exist_ok=True)
     (ALIGNED_DIR / "inputs").mkdir(exist_ok=True)
@@ -921,24 +921,30 @@ def run_pipeline(auto_train=True):
         # Check if Google Drive already has previous checkpoints to resume from
         ckpt_local_dir = Path("/kaggle/working/outputs/kaggle-25ch-v1/checkpoints")
         ckpt_local_dir.mkdir(parents=True, exist_ok=True)
-        print("  Checking Google Drive for existing checkpoints to resume...", flush=True)
-        subprocess.run([
-            "rclone", "copy",
-            "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/checkpoints",
-            str(ckpt_local_dir),
-            "-q"
-        ], stderr=subprocess.DEVNULL, check=False)
-        # Clean any corrupted or incomplete (< 1MB) checkpoint files
+        if fresh:
+            print("  [FRESH] Starting fresh run from scratch (Epoch 0). Removing local checkpoints...", flush=True)
+            for cp in ckpt_local_dir.glob("*.ckpt"):
+                cp.unlink(missing_ok=True)
+        else:
+            print("  Checking Google Drive for existing checkpoints to resume...", flush=True)
+            subprocess.run([
+                "rclone", "copy",
+                "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/checkpoints",
+                str(ckpt_local_dir),
+                "-q"
+            ], stderr=subprocess.DEVNULL, check=False)
+
+        # Clean any corrupted (< 1MB) or legacy zero-loss dummy checkpoints
         for cp in ckpt_local_dir.glob("*.ckpt"):
-            if cp.stat().st_size < 1024 * 1024:
-                print(f"  [CLEANUP] Removing incomplete checkpoint: {cp.name} ({cp.stat().st_size} bytes)", flush=True)
+            if cp.stat().st_size < 1024 * 1024 or "val_loss0.0000" in cp.name:
+                print(f"  [CLEANUP] Removing invalid or dummy checkpoint: {cp.name}", flush=True)
                 cp.unlink(missing_ok=True)
 
         existing_ckpts = [f for f in ckpt_local_dir.glob("*.ckpt") if f.stat().st_size > 1024 * 1024]
-        if existing_ckpts:
-            print(f"  [RESUME] Found {len(existing_ckpts)} valid checkpoint(s) synced from Google Drive. Resuming training...", flush=True)
+        if existing_ckpts and not fresh:
+            print(f"  [RESUME] Found {len(existing_ckpts)} valid checkpoint(s) synced from Google Drive. Resuming training seamlessly...", flush=True)
         else:
-            print("  [NEW RUN] No previous checkpoint found on Google Drive. Training will start from Epoch 0.", flush=True)
+            print("  [NEW RUN] Training will start fresh from Epoch 0.", flush=True)
 
         train_env = os.environ.copy()
         train_env["PYTHONUNBUFFERED"] = "1"
@@ -957,6 +963,8 @@ def run_pipeline(auto_train=True):
             "--config", str(repo_root / "configs" / "kaggle_25ch.yaml"),
             "--no-wandb",
         ]
+        if fresh:
+            train_cmd.append("--fresh")
         try:
             subprocess.run(train_cmd, env=train_env, check=True)
             print("\n" + "=" * 60, flush=True)
@@ -979,5 +987,6 @@ def run_pipeline(auto_train=True):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OceanEmbed Kaggle Pipeline")
     parser.add_argument("--preprocess-only", action="store_true", help="Only run preprocessing without starting training")
+    parser.add_argument("--fresh", action="store_true", help="Start training fresh from scratch (Epoch 0)")
     args = parser.parse_args()
-    run_pipeline(auto_train=not args.preprocess_only)
+    run_pipeline(auto_train=not args.preprocess_only, fresh=args.fresh)

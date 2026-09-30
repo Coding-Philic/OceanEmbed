@@ -280,7 +280,9 @@ def main(args: argparse.Namespace) -> None:
 
     # ── Checkpoint Auto-Resume & Verification ────────────────────────
     ckpt_path = None
-    if getattr(args, "ckpt", None):
+    if getattr(args, "fresh", False):
+        print("  [TRAINING] --fresh flag specified. Starting training from scratch (Epoch 0).", flush=True)
+    elif getattr(args, "ckpt", None):
         ckpt_path = args.ckpt
         print(f"  [RESUME] Explicit checkpoint passed: {ckpt_path}", flush=True)
     else:
@@ -292,7 +294,7 @@ def main(args: argparse.Namespace) -> None:
                 candidates.append(last_ckpt)
 
             epoch_ckpts = sorted(
-                [f for f in ckpt_dir.glob("*.ckpt") if f.name != "last.ckpt" and f.stat().st_size > 1024 * 1024],
+                [f for f in ckpt_dir.glob("*.ckpt") if f.name != "last.ckpt" and f.stat().st_size > 1024 * 1024 and "val_loss0.0000" not in f.name],
                 key=lambda f: f.stat().st_mtime,
                 reverse=True,
             )
@@ -328,6 +330,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train OceanEmbed (Phys-VSA-Net)")
     parser.add_argument("--config",   required=True,      help="Path to YAML config")
     parser.add_argument("--ckpt",     default=None,       help="Path to checkpoint to resume training from")
+    parser.add_argument("--fresh",    action="store_true", help="Force fresh start, ignoring existing checkpoints")
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
     parser.add_argument("--override", nargs="*", default=[], metavar="KEY=VALUE",
                         help="OmegaConf dot-path overrides, e.g. training.lr=5e-5")
