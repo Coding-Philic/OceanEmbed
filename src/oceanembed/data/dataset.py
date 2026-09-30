@@ -110,7 +110,7 @@ class OceanEmbedDataset(Dataset):
             if not fpath.exists():
                 continue
             with xr.open_dataset(fpath) as ds:
-                n_days = ds.dims["time"]
+                n_days = ds.sizes["time"]
             for d in range(n_days):
                 samples.append((year, d))
         return samples
@@ -128,8 +128,8 @@ class OceanEmbedDataset(Dataset):
             fpath    = self.data_dir / "inputs" / f"{first_ch}_{year}.nc"
             with xr.open_dataset(fpath) as ds:
                 varname = next(iter(ds.data_vars))
-                H = ds.dims["lat"]
-                W = ds.dims["lon"]
+                H = ds.sizes["lat"]
+                W = ds.sizes["lon"]
             self._grid_shape = (H, W)
         return self._grid_shape
 

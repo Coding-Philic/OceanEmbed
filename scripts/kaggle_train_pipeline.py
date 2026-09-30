@@ -927,7 +927,7 @@ def run_pipeline(auto_train=True):
             "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/checkpoints",
             str(ckpt_local_dir),
             "-q"
-        ], check=False)
+        ], stderr=subprocess.DEVNULL, check=False)
         existing_ckpts = list(ckpt_local_dir.glob("*.ckpt"))
         if existing_ckpts:
             print(f"  [RESUME] Found {len(existing_ckpts)} checkpoint(s) synced from Google Drive. Resuming training...", flush=True)
