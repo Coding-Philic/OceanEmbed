@@ -48,6 +48,8 @@ class CloudCheckpointSyncCallback(pl.Callback):
         self.output_dir = output_dir
 
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        epoch = trainer.current_epoch
+        print(f"\n>>> [COMPLETED EPOCH {epoch}] Model checkpoint updating... (Syncing to Google Drive)", flush=True)
         ckpt_dir = self.output_dir / "checkpoints"
         if shutil.which("rclone") and ckpt_dir.exists():
             subprocess.Popen([
