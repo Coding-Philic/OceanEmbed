@@ -92,34 +92,58 @@ import shutil
 import subprocess
 
 class CloudCheckpointSyncCallback(pl.Callback):
-    """Automatically mirror checkpoints to Google Drive in background after each epoch."""
-    def __init__(self, output_dir: Path):
+    """Automatically mirror every epoch checkpoint to Google Drive while keeping Kaggle disk safe."""
+    def __init__(self, output_dir: Path, max_local_ckpts: int = 4):
         super().__init__()
         self.output_dir = output_dir
+        self.max_local_ckpts = max_local_ckpts
 
-    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+    def _sync_to_gdrive(self, trainer: pl.Trainer) -> None:
         if getattr(trainer, "global_rank", 0) != 0:
             return
         epoch = trainer.current_epoch
-        print(f"\n>>> [COMPLETED EPOCH {epoch}] Model checkpoint updating... (Syncing to Google Drive)", flush=True)
         ckpt_dir = self.output_dir / "checkpoints"
         csv_dir = self.output_dir / "csv_logs"
-        if shutil.which("rclone"):
-            if ckpt_dir.exists():
-                subprocess.Popen([
-                    "rclone", "copy",
-                    str(ckpt_dir),
-                    "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/checkpoints",
-                    "--retries", "5",
-                    "-q"
-                ], stderr=subprocess.DEVNULL)
-            if csv_dir.exists():
-                subprocess.Popen([
-                    "rclone", "copy",
-                    str(csv_dir),
-                    "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/logs",
-                    "-q"
-                ], stderr=subprocess.DEVNULL)
+
+        if not shutil.which("rclone"):
+            return
+
+        if ckpt_dir.exists():
+            print(f"\n  [GDRIVE SYNC] Mirroring Epoch {epoch:02d} checkpoint to Google Drive...", flush=True)
+            subprocess.run([
+                "rclone", "copy",
+                str(ckpt_dir),
+                "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/checkpoints",
+                "--update",
+                "--transfers", "4",
+                "-q"
+            ], check=False)
+            print(f"  [GDRIVE SYNC] Epoch {epoch:02d} successfully backed up to Google Drive!", flush=True)
+
+            # Keep only the newest local checkpoints on Kaggle to prevent disk quota crash (19.5 GB max)
+            # Older checkpoints remain safely in Google Drive forever!
+            local_epoch_ckpts = sorted(
+                [f for f in ckpt_dir.glob("epoch*.ckpt")],
+                key=lambda f: f.stat().st_mtime
+            )
+            if len(local_epoch_ckpts) > self.max_local_ckpts:
+                for old_f in local_epoch_ckpts[:-self.max_local_ckpts]:
+                    try:
+                        old_f.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+
+        if csv_dir.exists():
+            subprocess.run([
+                "rclone", "copy",
+                str(csv_dir),
+                "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/logs",
+                "--update",
+                "-q"
+            ], check=False)
+
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        self._sync_to_gdrive(trainer)
 
 
 def build_callbacks(cfg, output_dir: Path) -> list[pl.Callback]:
@@ -127,12 +151,9 @@ def build_callbacks(cfg, output_dir: Path) -> list[pl.Callback]:
     callbacks = [
         ModelCheckpoint(
             dirpath   = str(output_dir / "checkpoints"),
-            filename  = "epoch{epoch:03d}-val_loss{val/loss:.4f}",
-            monitor   = cfg.training.monitor,
-            mode      = cfg.training.mode,
-            save_top_k= cfg.training.save_top_k,
+            filename  = "epoch{epoch:03d}",
+            save_top_k= -1,   # Save every single epoch!
             save_last = True,
-            auto_insert_metric_name = False,
         ),
         LearningRateMonitor(logging_interval="epoch"),
         TQDMProgressBar(refresh_rate=1),

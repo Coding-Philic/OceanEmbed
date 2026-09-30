@@ -107,8 +107,8 @@ loss:
 
 # --- Training ---
 training:
-  batch_size: 8
-  accumulate_grad_batches: 2
+  batch_size: 16
+  accumulate_grad_batches: 1
   lr: 1.0e-4
   weight_decay: 1.0e-4
   max_epochs: 50
@@ -117,12 +117,12 @@ training:
   gradient_clip_val: 1.0
   channel_dropout_p: 0.15
   precision: "16-mixed"
-  early_stopping_patience: 10
+  early_stopping_patience: 0
 
   scheduler_t0: 20
   scheduler_t_mult: 2
 
-  save_top_k: 3
+  save_top_k: -1
   monitor: "val/total"
   mode: "min"
 

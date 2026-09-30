@@ -269,10 +269,9 @@ class OceanEmbedDataset(Dataset):
         target = self._load_target(year, day_idx)  # [K, H, W]
 
         # ── Valid-pixel mask (must be computed before NaN fill) ───────
-        # Mask requires both inputs and target to be valid (no NaNs)
-        mask_inputs = np.all(np.isfinite(inputs), axis=0)
+        # Valid ocean pixels are defined by GLORYS ocean points (finite target across depth levels)
         mask_target = np.all(np.isfinite(target), axis=0)
-        mask = (mask_inputs & mask_target).astype(np.float32)  # [H, W]
+        mask = mask_target.astype(np.float32)  # [H, W]
 
         # ── Fill NaNs ────────────────────────────────────────────────
         x = np.where(np.isfinite(x), x, self.nan_fill_value)
