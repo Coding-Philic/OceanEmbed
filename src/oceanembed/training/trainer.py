@@ -29,7 +29,14 @@ class OceanEmbedLitModule(pl.LightningModule):
 
     def __init__(self, config) -> None:
         super().__init__()
-        self.save_hyperparameters()
+        try:
+            from omegaconf import OmegaConf
+            if OmegaConf.is_config(config):
+                self.save_hyperparameters(OmegaConf.to_container(config, resolve=True))
+            else:
+                self.save_hyperparameters()
+        except Exception:
+            self.save_hyperparameters()
         cfg = config
 
         # ── Model ────────────────────────────────────────────────────

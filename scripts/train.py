@@ -19,8 +19,41 @@ if str(_REPO_ROOT / "src") not in sys.path:
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import torch
+import torch.serialization
+from omegaconf import OmegaConf, DictConfig, ListConfig
+
+# Register OmegaConf safe globals for PyTorch 2.6 weights_only unpickler
+try:
+    safe_types = [DictConfig, ListConfig]
+    for mod_name in ["omegaconf.dictconfig", "omegaconf.listconfig", "omegaconf.basecontainer", "omegaconf.nodes"]:
+        try:
+            mod = __import__(mod_name, fromlist=["*"])
+            for attr in dir(mod):
+                val = getattr(mod, attr)
+                if isinstance(val, type):
+                    safe_types.append(val)
+        except Exception:
+            pass
+    if hasattr(torch.serialization, "add_safe_globals"):
+        torch.serialization.add_safe_globals(list(set(safe_types)))
+except Exception:
+    pass
+
+# Fallback: if weights_only=True fails on checkpoint load in PyTorch 2.6, fallback to weights_only=False
+_orig_torch_load = torch.load
+def _safe_torch_load(*args, **kwargs):
+    try:
+        return _orig_torch_load(*args, **kwargs)
+    except Exception as e:
+        err_msg = str(e)
+        if "Weights only load failed" in err_msg or "WeightsUnpickler error" in err_msg or "Unsupported global" in err_msg:
+            kwargs["weights_only"] = False
+            return _orig_torch_load(*args, **kwargs)
+        raise
+torch.load = _safe_torch_load
+
 import pytorch_lightning as pl
-from omegaconf import OmegaConf
 from pytorch_lightning.callbacks import (
     EarlyStopping,
     LearningRateMonitor,
