@@ -928,9 +928,15 @@ def run_pipeline(auto_train=True):
             str(ckpt_local_dir),
             "-q"
         ], stderr=subprocess.DEVNULL, check=False)
-        existing_ckpts = list(ckpt_local_dir.glob("*.ckpt"))
+        # Clean any corrupted or incomplete (< 1MB) checkpoint files
+        for cp in ckpt_local_dir.glob("*.ckpt"):
+            if cp.stat().st_size < 1024 * 1024:
+                print(f"  [CLEANUP] Removing incomplete checkpoint: {cp.name} ({cp.stat().st_size} bytes)", flush=True)
+                cp.unlink(missing_ok=True)
+
+        existing_ckpts = [f for f in ckpt_local_dir.glob("*.ckpt") if f.stat().st_size > 1024 * 1024]
         if existing_ckpts:
-            print(f"  [RESUME] Found {len(existing_ckpts)} checkpoint(s) synced from Google Drive. Resuming training...", flush=True)
+            print(f"  [RESUME] Found {len(existing_ckpts)} valid checkpoint(s) synced from Google Drive. Resuming training...", flush=True)
         else:
             print("  [NEW RUN] No previous checkpoint found on Google Drive. Training will start from Epoch 0.", flush=True)
 

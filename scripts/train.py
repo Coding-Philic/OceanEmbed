@@ -40,18 +40,24 @@ try:
 except Exception:
     pass
 
-# Fallback: if weights_only=True fails on checkpoint load in PyTorch 2.6, fallback to weights_only=False
+# In PyTorch 2.6+, torch.load defaults to weights_only=True.
+# PyTorch Lightning checkpoints contain full trainer state, optimizers, and OmegaConf objects.
+# We set weights_only=False proactively so that checkpoint unpickling never fails with
+# 'Unsupported global' or leaves stream pointers dirty.
 _orig_torch_load = torch.load
 def _safe_torch_load(*args, **kwargs):
-    try:
-        return _orig_torch_load(*args, **kwargs)
-    except Exception as e:
-        err_msg = str(e)
-        if "Weights only load failed" in err_msg or "WeightsUnpickler error" in err_msg or "Unsupported global" in err_msg:
-            kwargs["weights_only"] = False
-            return _orig_torch_load(*args, **kwargs)
-        raise
+    kwargs["weights_only"] = False
+    return _orig_torch_load(*args, **kwargs)
 torch.load = _safe_torch_load
+
+try:
+    import lightning_fabric.utilities.cloud_io as _cloud_io
+    _orig_pl_load = _cloud_io.pl_load
+    def _safe_pl_load(path_or_url, map_location=None, weights_only=None):
+        return _orig_pl_load(path_or_url, map_location=map_location, weights_only=False)
+    _cloud_io.pl_load = _safe_pl_load
+except Exception:
+    pass
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import (
@@ -238,7 +244,7 @@ def main(args: argparse.Namespace) -> None:
         enable_progress_bar = True,
     )
 
-    # ── Checkpoint Auto-Resume ───────────────────────────────────────
+    # ── Checkpoint Auto-Resume & Verification ────────────────────────
     ckpt_path = None
     if getattr(args, "ckpt", None):
         ckpt_path = args.ckpt
@@ -246,17 +252,37 @@ def main(args: argparse.Namespace) -> None:
     else:
         ckpt_dir = output_dir / "checkpoints"
         if ckpt_dir.exists():
+            candidates = []
             last_ckpt = ckpt_dir / "last.ckpt"
-            if last_ckpt.exists():
-                ckpt_path = str(last_ckpt)
-            else:
-                ckpts = sorted(ckpt_dir.glob("*.ckpt"), key=lambda f: f.stat().st_mtime)
-                if ckpts:
-                    ckpt_path = str(ckpts[-1])
-            if ckpt_path:
-                print(f"  [RESUME] Found existing checkpoint: {ckpt_path}. Resuming training seamlessly...", flush=True)
+            if last_ckpt.exists() and last_ckpt.stat().st_size > 1024 * 1024:
+                candidates.append(last_ckpt)
 
-    trainer.fit(lit_module, datamodule=datamodule, ckpt_path=ckpt_path)
+            epoch_ckpts = sorted(
+                [f for f in ckpt_dir.glob("*.ckpt") if f.name != "last.ckpt" and f.stat().st_size > 1024 * 1024],
+                key=lambda f: f.stat().st_mtime,
+                reverse=True,
+            )
+            candidates.extend(epoch_ckpts)
+
+            for cand in candidates:
+                try:
+                    print(f"  [RESUME] Verifying checkpoint integrity: {cand.name} ({cand.stat().st_size / (1024*1024):.1f} MB)...", flush=True)
+                    test_load = torch.load(str(cand), map_location="cpu", weights_only=False)
+                    if isinstance(test_load, dict) and ("state_dict" in test_load or "epoch" in test_load):
+                        ckpt_path = str(cand)
+                        print(f"  [RESUME] Successfully verified {cand.name}. Resuming training seamlessly...", flush=True)
+                        break
+                except Exception as err:
+                    print(f"  [RESUME] Checkpoint {cand.name} is invalid or incomplete ({err}). Skipping candidate.", flush=True)
+
+            if not ckpt_path:
+                print("  [RESUME] No valid intact checkpoint found. Starting fresh initialisation from scratch.", flush=True)
+
+    import inspect
+    fit_kwargs = {"datamodule": datamodule, "ckpt_path": ckpt_path}
+    if "weights_only" in inspect.signature(trainer.fit).parameters:
+        fit_kwargs["weights_only"] = False
+    trainer.fit(lit_module, **fit_kwargs)
     print("Training complete.", flush=True)
     if trainer.checkpoint_callback and trainer.checkpoint_callback.best_model_path:
         print(f"Best checkpoint: {trainer.checkpoint_callback.best_model_path}", flush=True)

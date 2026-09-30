@@ -41,7 +41,7 @@ def _load_model_from_checkpoint(
         init_std           = cfg.model.get("init_std", 0.02),
     )
 
-    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     state_dict = {
         k.removeprefix("model."): v
         for k, v in ckpt["state_dict"].items()
