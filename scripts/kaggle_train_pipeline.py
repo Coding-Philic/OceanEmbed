@@ -800,6 +800,15 @@ def run_pipeline(auto_train=True):
     print(f"  Auto Train: {auto_train}")
     print("=" * 60)
 
+    # Check if pre-aligned datasets already exist on Google Drive to restore instantly
+    print("  Checking Google Drive for pre-aligned dataset backup...", flush=True)
+    subprocess.run([
+        "rclone", "copy",
+        "gdrive:OceanEmbed/data/aligned",
+        str(ALIGNED_DIR),
+        "-q"
+    ], check=False)
+
     # --- Step 1: GLORYS target (largest file, process first) ---
     print("\n[STEP 1/3] Processing GLORYS target...")
     ref_times = process_glorys_target()
@@ -873,6 +882,15 @@ def run_pipeline(auto_train=True):
     print(f"  Free disk: {disk_free_gb():.1f} GB")
     print("=" * 60)
 
+    # Back up newly aligned dataset to Google Drive so any future session can restore in seconds
+    print("  Syncing aligned dataset to Google Drive backup...", flush=True)
+    subprocess.run([
+        "rclone", "copy",
+        str(ALIGNED_DIR),
+        "gdrive:OceanEmbed/data/aligned",
+        "-q"
+    ], check=False)
+
     # --- Step 4: Model Training ---
     if auto_train:
         print("\n" + "=" * 60, flush=True)
@@ -894,6 +912,22 @@ def run_pipeline(auto_train=True):
             except ImportError:
                 print(f"  Installing missing requirement: {pkg}...", flush=True)
                 subprocess.run([sys.executable, "-m", "pip", "install", "-q", pkg], check=False)
+
+        # Check if Google Drive already has previous checkpoints to resume from
+        ckpt_local_dir = Path("/kaggle/working/outputs/kaggle-25ch-v1/checkpoints")
+        ckpt_local_dir.mkdir(parents=True, exist_ok=True)
+        print("  Checking Google Drive for existing checkpoints to resume...", flush=True)
+        subprocess.run([
+            "rclone", "copy",
+            "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/checkpoints",
+            str(ckpt_local_dir),
+            "-q"
+        ], check=False)
+        existing_ckpts = list(ckpt_local_dir.glob("*.ckpt"))
+        if existing_ckpts:
+            print(f"  [RESUME] Found {len(existing_ckpts)} checkpoint(s) synced from Google Drive. Resuming training...", flush=True)
+        else:
+            print("  [NEW RUN] No previous checkpoint found on Google Drive. Training will start from Epoch 0.", flush=True)
 
         train_env = os.environ.copy()
         existing_pp = train_env.get("PYTHONPATH", "")

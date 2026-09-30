@@ -47,6 +47,7 @@ def build_callbacks(cfg, output_dir: Path) -> list[pl.Callback]:
             monitor   = cfg.training.monitor,
             mode      = cfg.training.mode,
             save_top_k= cfg.training.save_top_k,
+            save_last = True,
             auto_insert_metric_name = False,
         ),
         LearningRateMonitor(logging_interval="epoch"),
@@ -128,13 +129,25 @@ def main(args: argparse.Namespace) -> None:
         save_dir= str(output_dir),
     ) if not args.no_wandb else None
 
+    # ── Hardware / Accelerator Auto-Detection ─────────────────────────
+    import torch
+    accelerator = cfg.hardware.accelerator
+    devices = cfg.hardware.gpus
+    precision = cfg.training.precision
+    if accelerator == "gpu" and not torch.cuda.is_available():
+        print("\n  [WARNING] No GPU detected! Please select 'GPU T4 x2' in Kaggle Notebook Settings.", flush=True)
+        print("  Temporarily running on CPU (precision=32)...\n", flush=True)
+        accelerator = "cpu"
+        devices = "auto"
+        precision = 32
+
     # ── Trainer ───────────────────────────────────────────────────────
     trainer = pl.Trainer(
         max_epochs          = cfg.training.max_epochs,
-        accelerator         = cfg.hardware.accelerator,
-        devices             = cfg.hardware.gpus,
-        strategy            = cfg.hardware.strategy,
-        precision           = cfg.training.precision,
+        accelerator         = accelerator,
+        devices             = devices,
+        strategy            = cfg.hardware.strategy if accelerator == "gpu" else "auto",
+        precision           = precision,
         gradient_clip_val   = cfg.training.gradient_clip_val,
         log_every_n_steps   = cfg.logging.log_every_n_steps,
         logger              = logger,
@@ -142,14 +155,34 @@ def main(args: argparse.Namespace) -> None:
         enable_progress_bar = True,
     )
 
-    trainer.fit(lit_module, datamodule=datamodule)
-    print("Training complete.")
-    print(f"Best checkpoint: {trainer.checkpoint_callback.best_model_path}")
+    # ── Checkpoint Auto-Resume ───────────────────────────────────────
+    ckpt_path = None
+    if getattr(args, "ckpt", None):
+        ckpt_path = args.ckpt
+        print(f"  [RESUME] Explicit checkpoint passed: {ckpt_path}", flush=True)
+    else:
+        ckpt_dir = output_dir / "checkpoints"
+        if ckpt_dir.exists():
+            last_ckpt = ckpt_dir / "last.ckpt"
+            if last_ckpt.exists():
+                ckpt_path = str(last_ckpt)
+            else:
+                ckpts = sorted(ckpt_dir.glob("*.ckpt"), key=lambda f: f.stat().st_mtime)
+                if ckpts:
+                    ckpt_path = str(ckpts[-1])
+            if ckpt_path:
+                print(f"  [RESUME] Found existing checkpoint: {ckpt_path}. Resuming training seamlessly...", flush=True)
+
+    trainer.fit(lit_module, datamodule=datamodule, ckpt_path=ckpt_path)
+    print("Training complete.", flush=True)
+    if trainer.checkpoint_callback and trainer.checkpoint_callback.best_model_path:
+        print(f"Best checkpoint: {trainer.checkpoint_callback.best_model_path}", flush=True)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train OceanEmbed (Phys-VSA-Net)")
     parser.add_argument("--config",   required=True,      help="Path to YAML config")
+    parser.add_argument("--ckpt",     default=None,       help="Path to checkpoint to resume training from")
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
     parser.add_argument("--override", nargs="*", default=[], metavar="KEY=VALUE",
                         help="OmegaConf dot-path overrides, e.g. training.lr=5e-5")
