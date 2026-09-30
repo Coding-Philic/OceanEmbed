@@ -40,7 +40,9 @@ sys.stdout.reconfigure(line_buffering=True)
 # ============================================================================
 
 GDRIVE_BASE = "gdrive:OceanEmbed/data/raw"
-TMP_RAW     = Path("/kaggle/working/tmp_raw")
+# Use /tmp for raw temporary downloads to tap into Kaggle's 57.6 GB scratch partition,
+# leaving /kaggle/working's 19.5 GB output quota exclusively for aligned datasets and model weights.
+TMP_RAW     = Path("/tmp/oceanembed_raw")
 ALIGNED_DIR = Path("/kaggle/working/aligned")
 PROCESSED   = Path("/kaggle/working/processed")
 
@@ -108,9 +110,17 @@ def ensure_rclone():
         print("  [SETUP] rclone.conf with [gdrive] verified.", flush=True)
 
 
-def disk_free_gb():
-    """Return free disk space in GB."""
-    st = os.statvfs("/kaggle/working")
+def disk_free_gb(path="/kaggle/working"):
+    """Return free disk space in GB for /kaggle/working output partition (19.5 GB max)."""
+    target = path if os.path.exists(path) else "/"
+    st = os.statvfs(target)
+    return (st.f_bavail * st.f_frsize) / (1024**3)
+
+
+def scratch_free_gb(path="/tmp"):
+    """Return free disk space in GB for /tmp scratch partition (57.6 GB max on Kaggle)."""
+    target = path if os.path.exists(path) else "/"
+    st = os.statvfs(target)
     return (st.f_bavail * st.f_frsize) / (1024**3)
 
 
@@ -782,7 +792,8 @@ def run_pipeline(auto_train=True):
 
     print("=" * 60)
     print("OceanEmbed Kaggle Pipeline (Disk-Optimized)")
-    print(f"  Free disk: {disk_free_gb():.1f} GB")
+    print(f"  Working disk free (/kaggle/working): {disk_free_gb():.1f} GB  (Output Quota: 19.5 GB max)")
+    print(f"  Scratch disk free (/tmp):            {scratch_free_gb():.1f} GB  (Scratch Space: 57.6 GB max)")
     print(f"  Grid: {len(NEW_LON)} x {len(NEW_LAT)} (0.25 deg)")
     print(f"  Years: {YEARS}")
     print(f"  Channels: {len(CHANNEL_PIPELINE)}")
