@@ -178,20 +178,20 @@ def cleanup_raw(folder, force=False):
     print(f"  Cleaned up raw/{base}/ (Free disk: {disk_free_gb():.1f} GB)")
 
 
-# Real channels already confirmed aligned from previous run
+# Real channels already confirmed aligned from preprocessing
 VERIFIED_REAL_CHANNELS = {
     "sst", "sla", "wind_u", "wind_v", "cur_u", "cur_v",
-    "chl", "kd490", "sss", "bathymetry", "geothermal"
+    "chl", "kd490", "sss", "solar_rad", "thermal_rad",
+    "sensible_heat", "latent_heat", "slp", "precip", "river",
+    "bathymetry", "geothermal", "iod", "woa_temp", "woa_sal"
 }
 
 
 def is_channel_already_aligned(ch_name):
-    """Check if all years are already aligned with real data (>1 KB)."""
-    if ch_name not in VERIFIED_REAL_CHANNELS:
-        return False
+    """Check if all years are already aligned with real data (>100 KB)."""
     for year in YEARS:
         p = ALIGNED_DIR / "inputs" / f"{ch_name}_{year}.nc"
-        if not p.exists() or p.stat().st_size < 1000:
+        if not p.exists() or p.stat().st_size < 100_000:
             return False
     return True
 
