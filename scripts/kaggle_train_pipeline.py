@@ -942,8 +942,15 @@ def run_pipeline(auto_train=True):
 
         train_env = os.environ.copy()
         train_env["PYTHONUNBUFFERED"] = "1"
+        train_env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
         existing_pp = train_env.get("PYTHONPATH", "")
         train_env["PYTHONPATH"] = f"{src_path}:{existing_pp}" if existing_pp else src_path
+
+        # Clean up any lingering background python/cuda workers before launch
+        try:
+            subprocess.run(["pkill", "-9", "-f", "train.py"], stderr=subprocess.DEVNULL, check=False)
+        except Exception:
+            pass
 
         train_cmd = [
             sys.executable, "-u", str(repo_root / "scripts" / "train.py"),

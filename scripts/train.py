@@ -20,6 +20,7 @@ try:
 except Exception:
     pass
 os.environ["PYTHONUNBUFFERED"] = "1"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 # Ensure src/ is on sys.path even when not installed via pip
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -243,16 +244,17 @@ def main(args: argparse.Namespace) -> None:
 
     # ── Trainer ───────────────────────────────────────────────────────
     trainer = pl.Trainer(
-        max_epochs          = cfg.training.max_epochs,
-        accelerator         = accelerator,
-        devices             = devices,
-        strategy            = strategy,
-        precision           = precision,
-        gradient_clip_val   = cfg.training.gradient_clip_val,
-        log_every_n_steps   = cfg.logging.log_every_n_steps,
-        logger              = loggers,
-        callbacks           = build_callbacks(cfg, output_dir),
-        enable_progress_bar = True,
+        max_epochs              = cfg.training.max_epochs,
+        accelerator             = accelerator,
+        devices                 = devices,
+        strategy                = strategy,
+        precision               = precision,
+        accumulate_grad_batches = cfg.training.get("accumulate_grad_batches", 1),
+        gradient_clip_val       = cfg.training.gradient_clip_val,
+        log_every_n_steps       = cfg.logging.log_every_n_steps,
+        logger                  = loggers,
+        callbacks               = build_callbacks(cfg, output_dir),
+        enable_progress_bar     = True,
     )
 
     # ── Checkpoint Auto-Resume & Verification ────────────────────────
@@ -293,6 +295,8 @@ def main(args: argparse.Namespace) -> None:
     fit_kwargs = {"datamodule": datamodule, "ckpt_path": ckpt_path}
     if "weights_only" in inspect.signature(trainer.fit).parameters:
         fit_kwargs["weights_only"] = False
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     trainer.fit(lit_module, **fit_kwargs)
     print("Training complete.", flush=True)
     if trainer.checkpoint_callback and trainer.checkpoint_callback.best_model_path:

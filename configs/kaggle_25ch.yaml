@@ -107,7 +107,8 @@ loss:
 
 # --- Training ---
 training:
-  batch_size: 16
+  batch_size: 8
+  accumulate_grad_batches: 2
   lr: 1.0e-4
   weight_decay: 1.0e-4
   max_epochs: 50
