@@ -58,8 +58,9 @@ class CloudCheckpointSyncCallback(pl.Callback):
                 "rclone", "copy",
                 str(ckpt_dir),
                 "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/checkpoints",
+                "--retries", "5",
                 "-q"
-            ])
+            ], stderr=subprocess.DEVNULL)
 
 
 def build_callbacks(cfg, output_dir: Path) -> list[pl.Callback]:
