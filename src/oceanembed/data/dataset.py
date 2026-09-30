@@ -104,14 +104,24 @@ class OceanEmbedDataset(Dataset):
 
     def _build_index(self) -> list[tuple[int, int]]:
         samples: list[tuple[int, int]] = []
-        first_ch = self.input_channels[0]
         for year in self.years:
-            fpath = self.data_dir / "inputs" / f"{first_ch}_{year}.nc"
-            if not fpath.exists():
+            target_path = self.data_dir / "targets" / f"glorys_temp_{year}.nc"
+            if not target_path.exists():
                 continue
-            with xr.open_dataset(fpath) as ds:
-                n_days = ds.sizes["time"]
-            for d in range(n_days):
+            with xr.open_dataset(target_path) as ds:
+                min_days = ds.sizes.get("time", 365)
+
+            for ch in self.input_channels:
+                ch_path = self.data_dir / "inputs" / f"{ch}_{year}.nc"
+                if ch_path.exists():
+                    try:
+                        with xr.open_dataset(ch_path) as ds_ch:
+                            if "time" in ds_ch.sizes:
+                                min_days = min(min_days, ds_ch.sizes["time"])
+                    except Exception:
+                        pass
+
+            for d in range(min_days):
                 samples.append((year, d))
         return samples
 
@@ -144,7 +154,13 @@ class OceanEmbedDataset(Dataset):
         fpath = self.data_dir / "inputs" / f"{channel}_{year}.nc"
         with xr.open_dataset(fpath) as ds:
             varname = next(iter(ds.data_vars))
-            arr = ds[varname].isel(time=day_idx).values.astype(np.float32)
+            da = ds[varname]
+            if "time" in da.dims:
+                t_size = da.sizes["time"]
+                actual_idx = min(day_idx, t_size - 1)
+                arr = da.isel(time=actual_idx).values.astype(np.float32)
+            else:
+                arr = da.values.astype(np.float32)
         return arr  # [H, W]
 
     def _load_target(self, year: int, day_idx: int) -> np.ndarray:
@@ -152,7 +168,10 @@ class OceanEmbedDataset(Dataset):
         fpath = self.data_dir / "targets" / f"glorys_temp_{year}.nc"
         with xr.open_dataset(fpath) as ds:
             varname = next(iter(ds.data_vars))
-            arr = ds[varname].isel(time=day_idx).values.astype(np.float32)
+            da = ds[varname]
+            t_size = da.sizes.get("time", 1)
+            actual_idx = min(day_idx, t_size - 1)
+            arr = da.isel(time=actual_idx).values.astype(np.float32)
         # arr shape: [all_depths, H, W] — select configured depth levels
         # Assumes depth coordinate is accessible; here we select by index
         return arr  # [K, H, W]  (depth selection done during preprocessing)
