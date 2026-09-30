@@ -38,6 +38,26 @@ from oceanembed.training.callbacks  import (
 )
 
 
+import shutil
+import subprocess
+
+class CloudCheckpointSyncCallback(pl.Callback):
+    """Automatically mirror checkpoints to Google Drive in background after each epoch."""
+    def __init__(self, output_dir: Path):
+        super().__init__()
+        self.output_dir = output_dir
+
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        ckpt_dir = self.output_dir / "checkpoints"
+        if shutil.which("rclone") and ckpt_dir.exists():
+            subprocess.Popen([
+                "rclone", "copy",
+                str(ckpt_dir),
+                "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/checkpoints",
+                "-q"
+            ])
+
+
 def build_callbacks(cfg, output_dir: Path) -> list[pl.Callback]:
     """Build the Lightning callback list from config."""
     callbacks = [
@@ -53,6 +73,7 @@ def build_callbacks(cfg, output_dir: Path) -> list[pl.Callback]:
         LearningRateMonitor(logging_interval="epoch"),
         RichProgressBar(),
         StoreFirstValBatchCallback(),
+        CloudCheckpointSyncCallback(output_dir),
         DepthProfileCallback(
             depth_levels = cfg.data.depth_levels,
             output_dir   = output_dir / "plots",
