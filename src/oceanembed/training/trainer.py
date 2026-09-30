@@ -29,6 +29,7 @@ class OceanEmbedLitModule(pl.LightningModule):
 
     def __init__(self, config) -> None:
         super().__init__()
+        self.cfg = config
         try:
             from omegaconf import OmegaConf
             if OmegaConf.is_config(config):
@@ -134,18 +135,52 @@ class OceanEmbedLitModule(pl.LightningModule):
     # ------------------------------------------------------------------
 
     def configure_optimizers(self):
-        cfg_train = self.hparams.config.training
+        # Resolve training configuration flexibly across all checkpoint versions and formats
+        cfg_train = None
+        if hasattr(self, "cfg") and self.cfg is not None:
+            if hasattr(self.cfg, "training"):
+                cfg_train = self.cfg.training
+            elif isinstance(self.cfg, dict) and "training" in self.cfg:
+                cfg_train = self.cfg["training"]
+
+        if cfg_train is None and hasattr(self, "hparams"):
+            if hasattr(self.hparams, "config"):
+                conf = self.hparams.config
+                cfg_train = getattr(conf, "training", None) if not isinstance(conf, dict) else conf.get("training")
+            elif hasattr(self.hparams, "training"):
+                cfg_train = self.hparams.training
+            elif isinstance(self.hparams, dict) and "training" in self.hparams:
+                cfg_train = self.hparams["training"]
+
+        if cfg_train is None:
+            raise ValueError(
+                f"Could not resolve 'training' configuration. Available hparams keys: "
+                f"{list(getattr(self, 'hparams', {}).keys())}"
+            )
+
+        def _get(obj, key, default=None):
+            if hasattr(obj, "get"):
+                val = obj.get(key, default)
+                return default if val is None else val
+            return getattr(obj, key, default)
+
+        lr           = float(_get(cfg_train, "lr", 1e-3))
+        weight_decay = float(_get(cfg_train, "weight_decay", 1e-4))
+        t_0          = int(_get(cfg_train, "scheduler_t0", 20))
+        t_mult       = int(_get(cfg_train, "scheduler_t_mult", 2))
+        min_lr       = float(_get(cfg_train, "min_lr", 1e-6))
+
         optimizer = AdamW(
             self.parameters(),
-            lr           = cfg_train.lr,
-            weight_decay = cfg_train.weight_decay,
+            lr           = lr,
+            weight_decay = weight_decay,
         )
 
         scheduler = CosineAnnealingWarmRestarts(
             optimizer,
-            T_0      = cfg_train.get("scheduler_t0",     20),
-            T_mult   = cfg_train.get("scheduler_t_mult",  2),
-            eta_min  = cfg_train.get("min_lr",          1e-6),
+            T_0      = t_0,
+            T_mult   = t_mult,
+            eta_min  = min_lr,
         )
 
         return {
