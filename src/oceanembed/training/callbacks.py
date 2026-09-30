@@ -146,7 +146,7 @@ class RealtimeTerminalLogger(pl.Callback):
         if getattr(trainer, "global_rank", 0) != 0:
             return
         total_batches = getattr(trainer, "num_training_batches", 57)
-        if (batch_idx + 1) % self.print_every_n_steps == 0 or (batch_idx + 1) == total_batches:
+        if batch_idx == 0 or (batch_idx + 1) % self.print_every_n_steps == 0 or (batch_idx + 1) == total_batches:
             loss = None
             if isinstance(outputs, dict) and "loss" in outputs:
                 loss = outputs["loss"].item()

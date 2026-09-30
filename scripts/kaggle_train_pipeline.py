@@ -941,6 +941,7 @@ def run_pipeline(auto_train=True):
             print("  [NEW RUN] No previous checkpoint found on Google Drive. Training will start from Epoch 0.", flush=True)
 
         train_env = os.environ.copy()
+        train_env["PYTHONUNBUFFERED"] = "1"
         existing_pp = train_env.get("PYTHONPATH", "")
         train_env["PYTHONPATH"] = f"{src_path}:{existing_pp}" if existing_pp else src_path
 

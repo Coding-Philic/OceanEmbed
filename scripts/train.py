@@ -9,8 +9,17 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
+
+# Force unbuffered streaming for Kaggle / Jupyter notebooks
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+os.environ["PYTHONUNBUFFERED"] = "1"
 
 # Ensure src/ is on sys.path even when not installed via pip
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -64,7 +73,7 @@ from pytorch_lightning.callbacks import (
     EarlyStopping,
     LearningRateMonitor,
     ModelCheckpoint,
-    RichProgressBar,
+    TQDMProgressBar,
 )
 from pytorch_lightning.loggers import WandbLogger, CSVLogger
 
@@ -125,8 +134,8 @@ def build_callbacks(cfg, output_dir: Path) -> list[pl.Callback]:
             auto_insert_metric_name = False,
         ),
         LearningRateMonitor(logging_interval="epoch"),
-        RichProgressBar(),
-        RealtimeTerminalLogger(print_every_n_steps=10),
+        TQDMProgressBar(refresh_rate=1),
+        RealtimeTerminalLogger(print_every_n_steps=5),
         StoreFirstValBatchCallback(),
         CloudCheckpointSyncCallback(output_dir),
         DepthProfileCallback(
