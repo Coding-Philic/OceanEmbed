@@ -47,6 +47,8 @@ class DepthProfileCallback(pl.Callback):
     def on_validation_epoch_end(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule
     ) -> None:
+        if getattr(trainer, "global_rank", 0) != 0:
+            return
         if trainer.current_epoch % self.log_every_n != 0:
             return
         if not hasattr(trainer, "_val_profile_batch"):

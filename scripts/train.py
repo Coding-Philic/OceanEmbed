@@ -48,6 +48,8 @@ class CloudCheckpointSyncCallback(pl.Callback):
         self.output_dir = output_dir
 
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if getattr(trainer, "global_rank", 0) != 0:
+            return
         epoch = trainer.current_epoch
         print(f"\n>>> [COMPLETED EPOCH {epoch}] Model checkpoint updating... (Syncing to Google Drive)", flush=True)
         ckpt_dir = self.output_dir / "checkpoints"
@@ -156,12 +158,24 @@ def main(args: argparse.Namespace) -> None:
     import torch
     accelerator = cfg.hardware.accelerator
     devices = cfg.hardware.gpus
+    strategy = cfg.hardware.strategy if accelerator == "gpu" else "auto"
     precision = cfg.training.precision
-    if accelerator == "gpu" and not torch.cuda.is_available():
+
+    if accelerator == "gpu" and torch.cuda.is_available():
+        num_gpus = torch.cuda.device_count()
+        if num_gpus > 1:
+            print(f"  [HARDWARE] Detected {num_gpus} GPUs (Dual T4)! Enabling DDP multi-GPU training for 2x speed.", flush=True)
+            devices = num_gpus
+            strategy = "ddp_find_unused_parameters_true"
+        else:
+            devices = 1
+            strategy = "auto"
+    elif accelerator == "gpu" and not torch.cuda.is_available():
         print("\n  [WARNING] No GPU detected! Please select 'GPU T4 x2' in Kaggle Notebook Settings.", flush=True)
         print("  Temporarily running on CPU (precision=32)...\n", flush=True)
         accelerator = "cpu"
         devices = "auto"
+        strategy = "auto"
         precision = 32
 
     # ── Trainer ───────────────────────────────────────────────────────
@@ -169,7 +183,7 @@ def main(args: argparse.Namespace) -> None:
         max_epochs          = cfg.training.max_epochs,
         accelerator         = accelerator,
         devices             = devices,
-        strategy            = cfg.hardware.strategy if accelerator == "gpu" else "auto",
+        strategy            = strategy,
         precision           = precision,
         gradient_clip_val   = cfg.training.gradient_clip_val,
         log_every_n_steps   = cfg.logging.log_every_n_steps,
