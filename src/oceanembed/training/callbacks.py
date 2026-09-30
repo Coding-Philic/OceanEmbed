@@ -123,3 +123,62 @@ class StoreFirstValBatchCallback(pl.Callback):
                 k: v.cpu() if isinstance(v, torch.Tensor) else v
                 for k, v in batch.items()
             }
+
+
+class RealtimeTerminalLogger(pl.Callback):
+    """Prints unbuffered, newline-delimited progress updates to terminal.
+    Guarantees real-time streaming in Jupyter / Kaggle notebooks where
+    in-place carriage returns (\r) are suppressed.
+    """
+
+    def __init__(self, print_every_n_steps: int = 10) -> None:
+        super().__init__()
+        self.print_every_n_steps = print_every_n_steps
+
+    def on_train_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        outputs: dict,
+        batch: dict,
+        batch_idx: int,
+    ) -> None:
+        if getattr(trainer, "global_rank", 0) != 0:
+            return
+        total_batches = getattr(trainer, "num_training_batches", 57)
+        if (batch_idx + 1) % self.print_every_n_steps == 0 or (batch_idx + 1) == total_batches:
+            loss = None
+            if isinstance(outputs, dict) and "loss" in outputs:
+                loss = outputs["loss"].item()
+            elif isinstance(outputs, torch.Tensor):
+                loss = outputs.item()
+
+            lr_str = ""
+            if trainer.optimizers:
+                lr = trainer.optimizers[0].param_groups[0].get("lr", 0.0)
+                lr_str = f" | lr: {lr:.2e}"
+
+            loss_str = f"loss: {loss:.4f}" if loss is not None else ""
+            print(
+                f"  [Epoch {trainer.current_epoch:02d} | Step {batch_idx + 1:02d}/{total_batches}] "
+                f"{loss_str}{lr_str}",
+                flush=True,
+            )
+
+    def on_train_epoch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+    ) -> None:
+        if getattr(trainer, "global_rank", 0) != 0:
+            return
+        metrics = []
+        for k, v in trainer.callback_metrics.items():
+            if "loss" in k or "wmse" in k or "grad" in k or "total" in k:
+                try:
+                    num = v.item() if hasattr(v, "item") else float(v)
+                    metrics.append(f"{k}: {num:.4f}")
+                except Exception:
+                    pass
+        summary = " | ".join(metrics[:6]) if metrics else "Epoch completed"
+        print(f"\n>>> [Epoch {trainer.current_epoch:02d} Complete] {summary}\n", flush=True)

@@ -74,6 +74,7 @@ from oceanembed.training.trainer    import OceanEmbedLitModule
 from oceanembed.training.callbacks  import (
     DepthProfileCallback,
     StoreFirstValBatchCallback,
+    RealtimeTerminalLogger,
 )
 
 
@@ -125,6 +126,7 @@ def build_callbacks(cfg, output_dir: Path) -> list[pl.Callback]:
         ),
         LearningRateMonitor(logging_interval="epoch"),
         RichProgressBar(),
+        RealtimeTerminalLogger(print_every_n_steps=10),
         StoreFirstValBatchCallback(),
         CloudCheckpointSyncCallback(output_dir),
         DepthProfileCallback(
