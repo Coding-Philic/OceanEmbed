@@ -27,7 +27,7 @@ from pytorch_lightning.callbacks import (
     ModelCheckpoint,
     RichProgressBar,
 )
-from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.loggers import WandbLogger, CSVLogger
 
 from oceanembed.data.dataset        import OceanEmbedDataModule
 from oceanembed.data.normalization  import NormalizationStats, compute_normalization_stats
@@ -53,14 +53,23 @@ class CloudCheckpointSyncCallback(pl.Callback):
         epoch = trainer.current_epoch
         print(f"\n>>> [COMPLETED EPOCH {epoch}] Model checkpoint updating... (Syncing to Google Drive)", flush=True)
         ckpt_dir = self.output_dir / "checkpoints"
-        if shutil.which("rclone") and ckpt_dir.exists():
-            subprocess.Popen([
-                "rclone", "copy",
-                str(ckpt_dir),
-                "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/checkpoints",
-                "--retries", "5",
-                "-q"
-            ], stderr=subprocess.DEVNULL)
+        csv_dir = self.output_dir / "csv_logs"
+        if shutil.which("rclone"):
+            if ckpt_dir.exists():
+                subprocess.Popen([
+                    "rclone", "copy",
+                    str(ckpt_dir),
+                    "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/checkpoints",
+                    "--retries", "5",
+                    "-q"
+                ], stderr=subprocess.DEVNULL)
+            if csv_dir.exists():
+                subprocess.Popen([
+                    "rclone", "copy",
+                    str(csv_dir),
+                    "gdrive:OceanEmbed/outputs/kaggle-25ch-v1/logs",
+                    "-q"
+                ], stderr=subprocess.DEVNULL)
 
 
 def build_callbacks(cfg, output_dir: Path) -> list[pl.Callback]:
@@ -149,11 +158,14 @@ def main(args: argparse.Namespace) -> None:
     print("=" * 70 + "\n", flush=True)
 
     # ── Logger ────────────────────────────────────────────────────────
-    logger = WandbLogger(
-        project = cfg.logging.project,
-        name    = cfg.logging.name,
-        save_dir= str(output_dir),
-    ) if not args.no_wandb else None
+    csv_logger = CSVLogger(save_dir=str(output_dir), name="csv_logs")
+    loggers = [csv_logger]
+    if not args.no_wandb:
+        loggers.append(WandbLogger(
+            project = cfg.logging.project,
+            name    = cfg.logging.name,
+            save_dir= str(output_dir),
+        ))
 
     # ── Hardware / Accelerator Auto-Detection ─────────────────────────
     import torch
@@ -188,7 +200,7 @@ def main(args: argparse.Namespace) -> None:
         precision           = precision,
         gradient_clip_val   = cfg.training.gradient_clip_val,
         log_every_n_steps   = cfg.logging.log_every_n_steps,
-        logger              = logger,
+        logger              = loggers,
         callbacks           = build_callbacks(cfg, output_dir),
         enable_progress_bar = True,
     )
