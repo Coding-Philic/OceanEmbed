@@ -128,7 +128,7 @@ training:
 # --- Hardware ---
 hardware:
   gpus: "auto"
-  num_workers: 4
+  num_workers: 2
   accelerator: "gpu"
   strategy: "auto"
 

@@ -166,7 +166,7 @@ def main(args: argparse.Namespace) -> None:
         if num_gpus > 1:
             print(f"  [HARDWARE] Detected {num_gpus} GPUs (Dual T4)! Enabling DDP multi-GPU training for 2x speed.", flush=True)
             devices = num_gpus
-            strategy = "ddp_find_unused_parameters_true"
+            strategy = "ddp"
         else:
             devices = 1
             strategy = "auto"
