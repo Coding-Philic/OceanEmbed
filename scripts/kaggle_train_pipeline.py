@@ -800,14 +800,18 @@ def run_pipeline(auto_train=True):
     print(f"  Auto Train: {auto_train}")
     print("=" * 60)
 
-    # Check if pre-aligned datasets already exist on Google Drive to restore instantly
-    print("  Checking Google Drive for pre-aligned dataset backup...", flush=True)
-    subprocess.run([
-        "rclone", "copy",
-        "gdrive:OceanEmbed/data/aligned",
-        str(ALIGNED_DIR),
-        "-q"
-    ], check=False)
+    # Check if pre-aligned datasets already exist on Google Drive to restore if local is empty
+    local_aligned_files = list(ALIGNED_DIR.rglob("*.nc"))
+    if not local_aligned_files:
+        print("  Checking Google Drive for pre-aligned dataset backup...", flush=True)
+        subprocess.run([
+            "rclone", "copy",
+            "gdrive:OceanEmbed/data/aligned",
+            str(ALIGNED_DIR),
+            "-q"
+        ], check=False)
+    else:
+        print(f"  [LOCAL CACHE] Found {len(local_aligned_files)} aligned files already on disk. Skipping download.", flush=True)
 
     # --- Step 1: GLORYS target (largest file, process first) ---
     print("\n[STEP 1/3] Processing GLORYS target...")
@@ -882,14 +886,15 @@ def run_pipeline(auto_train=True):
     print(f"  Free disk: {disk_free_gb():.1f} GB")
     print("=" * 60)
 
-    # Back up newly aligned dataset to Google Drive so any future session can restore in seconds
-    print("  Syncing aligned dataset to Google Drive backup...", flush=True)
-    subprocess.run([
+    # Back up newly aligned dataset to Google Drive in the BACKGROUND (non-blocking)
+    # so Step 4 (GPU Training) begins IMMEDIATELY without waiting 15-20 minutes!
+    print("  Launching background cloud backup of aligned dataset to Google Drive...", flush=True)
+    subprocess.Popen([
         "rclone", "copy",
         str(ALIGNED_DIR),
         "gdrive:OceanEmbed/data/aligned",
         "-q"
-    ], check=False)
+    ])
 
     # --- Step 4: Model Training ---
     if auto_train:
